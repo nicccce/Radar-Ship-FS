@@ -39,6 +39,7 @@ class Partition(NamedTuple):
     indices: np.ndarray
     feature_names: list[str]
     groups: Optional[np.ndarray] = None
+    metadata: Optional[dict] = None
 
 
 class Split:
@@ -99,8 +100,33 @@ def make_split(dataset: LoadedDataset, config: IrfsConfig, rng: SeededRng) -> Sp
     """
     indices = np.arange(dataset.X.shape[0])
 
-    if dataset.groups is None:
-        # Ungrouped datasets: the existing two-stage stratified-random split, unchanged.
+    if dataset.predefined_test_indices is not None:
+        # File-based datasets may ship an official test split. Keep it structurally sealed and
+        # carve only the source training rows into selector-train and reward-validation partitions.
+        test_idx = np.asarray(dataset.predefined_test_indices, dtype=int)
+        if test_idx.ndim != 1 or test_idx.size == 0:
+            raise ValueError("predefined_test_indices must be a non-empty one-dimensional array")
+        if np.unique(test_idx).size != test_idx.size:
+            raise ValueError("predefined_test_indices must not contain duplicates")
+        if test_idx.min() < 0 or test_idx.max() >= indices.size:
+            raise ValueError("predefined_test_indices contains an out-of-range row")
+        train_pool_idx = np.setdiff1d(indices, test_idx, assume_unique=True)
+        if dataset.groups is None:
+            train_idx, val_idx = train_test_split(
+                train_pool_idx,
+                test_size=config.validation_fraction,
+                random_state=_draw_split_seed(rng),
+                stratify=dataset.y[train_pool_idx],
+            )
+        else:
+            train_idx, val_idx = _group_split(
+                train_pool_idx,
+                dataset.groups[train_pool_idx],
+                config.validation_fraction,
+                _draw_split_seed(rng),
+            )
+    elif dataset.groups is None:
+        # Ungrouped datasets without an official test file retain the two-stage stratified split.
         train_pool_idx, test_idx = train_test_split(
             indices,
             test_size=config.test_fraction,
@@ -115,9 +141,7 @@ def make_split(dataset: LoadedDataset, config: IrfsConfig, rng: SeededRng) -> Sp
         )
     else:
         # Group-aware (REQ-022): keep whole groups (e.g. subjects) on one side so no group spans
-        # partitions. Unstratified (a pure group split cannot stratify by label); this and the
-        # departure from the reference's plain random 80/20 are recorded as a fidelity note
-        # (ASM-001 / REQ-019-B). Same two-stage shape and two RNG draws as the ungrouped path.
+        # partitions. Unstratified (a pure group split cannot stratify by label).
         train_pool_idx, test_idx = _group_split(
             indices, dataset.groups, config.test_fraction, _draw_split_seed(rng)
         )
@@ -135,6 +159,7 @@ def make_split(dataset: LoadedDataset, config: IrfsConfig, rng: SeededRng) -> Sp
             indices=idx,
             feature_names=dataset.feature_names,
             groups=(dataset.groups[idx] if dataset.groups is not None else None),
+            metadata=dataset.metadata,
         )
 
     return Split(

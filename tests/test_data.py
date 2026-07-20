@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from sklearn.datasets import dump_svmlight_file
 
 from config import load_config
 from data.loader import load
@@ -151,3 +152,70 @@ def test_split_keeps_each_group_whole(parkinsons_data_dir: str) -> None:
     test = subjects(split.release_test_for_final_metrics().indices)
 
     assert train.isdisjoint(val) and train.isdisjoint(test) and val.isdisjoint(test)
+
+
+@pytest.fixture()
+def radar_ship_data_dir(tmp_path):
+    """Synthetic 75-column train/test pair exercising train-only invalid-column detection."""
+    X_train = np.zeros((8, 75), dtype=np.float32)
+    X_train[:, 0] = np.arange(8, dtype=np.float32)
+    X_train[:, 2] = np.asarray([0, 1] * 4, dtype=np.float32)
+    X_train[:, 3] = X_train[:, 2]  # original feature 4 duplicates original feature 3
+    y_train = np.asarray([-1, 1] * 4, dtype=np.int64)
+
+    X_test = np.zeros((4, 75), dtype=np.float32)
+    X_test[:, 0] = np.arange(10, 14, dtype=np.float32)
+    X_test[:, 1] = np.arange(20, 24, dtype=np.float32)  # varies only in test; must stay removed
+    X_test[:, 2] = np.asarray([1, 0, 1, 0], dtype=np.float32)
+    X_test[:, 3] = X_test[:, 2]
+    y_test = np.asarray([-1, -1, 1, 1], dtype=np.int64)
+
+    dump_svmlight_file(
+        X_train,
+        y_train,
+        str(tmp_path / "sim_ship_cr_v10.train.svm"),
+        zero_based=False,
+    )
+    dump_svmlight_file(
+        X_test,
+        y_test,
+        str(tmp_path / "sim_ship_cr_v10.test.svm"),
+        zero_based=False,
+    )
+    return str(tmp_path)
+
+
+def test_radar_ship_loader_cleans_features_from_source_train_only(radar_ship_data_dir: str) -> None:
+    data = load(load_config({"dataset": "radar_ship", "data_dir": radar_ship_data_dir}))
+
+    assert data.X.shape == (12, 2)
+    assert data.X.dtype == np.float32
+    assert data.y.dtype == np.int64
+    assert data.feature_names == ["feature_1", "feature_3"]
+    np.testing.assert_array_equal(data.predefined_test_indices, np.arange(8, 12))
+
+    metadata = data.metadata
+    assert metadata["original_feature_count"] == 75
+    assert metadata["final_feature_ids"] == [1, 3]
+    assert 2 in metadata["constant_feature_ids"]  # test-only variation cannot rescue this column
+    assert metadata["duplicate_feature_mapping"] == {"4": 3}
+    assert metadata["preprocessing_fit_scope"] == "source_train_only"
+
+
+def test_radar_ship_split_preserves_source_test_file(radar_ship_data_dir: str) -> None:
+    config = load_config(
+        {
+            "dataset": "radar_ship",
+            "data_dir": radar_ship_data_dir,
+            "validation_fraction": 0.25,
+        }
+    )
+    data = load(config)
+    split = make_split(data, config, init_rng(42))
+    held_out = split.release_test_for_final_metrics()
+
+    np.testing.assert_array_equal(held_out.indices, np.arange(8, 12))
+    assert set(split.train.indices).isdisjoint(held_out.indices)
+    assert set(split.validation.indices).isdisjoint(held_out.indices)
+    assert set(split.train.indices) | set(split.validation.indices) == set(range(8))
+    assert split.train.metadata["final_feature_ids"] == [1, 3]

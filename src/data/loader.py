@@ -14,7 +14,9 @@ Satisfies COMP-001 -> REQ-001.
 
 from __future__ import annotations
 
+import hashlib
 import os
+from pathlib import Path
 from typing import Callable, NamedTuple, Optional
 
 import numpy as np
@@ -40,6 +42,8 @@ class LoadedDataset(NamedTuple):
     n_features: int
     n_classes: int
     groups: Optional[np.ndarray] = None
+    predefined_test_indices: Optional[np.ndarray] = None
+    metadata: Optional[dict] = None
 
 
 # A loader returns (X, y, feature_names, groups); ``groups`` is the per-row grouping vector
@@ -96,6 +100,114 @@ def _load_parkinsons(data_dir: str) -> _LoaderResult:
     return X, y, feature_names, groups
 
 
+def _sha256(path: Path) -> str:
+    """Return a stable content fingerprint without exposing machine-specific absolute paths."""
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _find_unique_columns(X: np.ndarray) -> tuple[np.ndarray, dict[int, int]]:
+    """Find exact duplicate columns using training data only."""
+    keep_indices: list[int] = []
+    duplicate_mapping: dict[int, int] = {}
+    for current_idx in range(X.shape[1]):
+        duplicate_of = next(
+            (kept_idx for kept_idx in keep_indices if np.array_equal(X[:, current_idx], X[:, kept_idx])),
+            None,
+        )
+        if duplicate_of is None:
+            keep_indices.append(current_idx)
+        else:
+            duplicate_mapping[current_idx] = duplicate_of
+    return np.asarray(keep_indices, dtype=int), duplicate_mapping
+
+
+def _label_counts(y: np.ndarray) -> dict[str, int]:
+    labels, counts = np.unique(y, return_counts=True)
+    return {str(int(label)): int(count) for label, count in zip(labels, counts)}
+
+
+def _load_radar_ship(
+    data_dir: str,
+) -> tuple[np.ndarray, np.ndarray, list[str], np.ndarray, dict]:
+    """Load and leakage-safely clean the supplied radar-ship SVM-light train/test files.
+
+    Constant and exact-duplicate columns are identified on the supplied training file only. The
+    resulting column mask is applied unchanged to the supplied test file. Rows are concatenated
+    only for the common dataset contract; ``predefined_test_indices`` preserves the source test
+    file as the final held-out partition.
+    """
+    from sklearn.datasets import load_svmlight_file
+
+    root = Path(data_dir)
+    train_path = root / "sim_ship_cr_v10.train.svm"
+    test_path = root / "sim_ship_cr_v10.test.svm"
+    missing = [str(path) for path in (train_path, test_path) if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Radar-ship SVM-light file(s) not found: "
+            f"{missing}. Set config.data_dir to the directory containing both files."
+        )
+
+    n_original_features = 75
+    X_train_sparse, y_train = load_svmlight_file(
+        train_path,
+        n_features=n_original_features,
+    )
+    X_test_sparse, y_test = load_svmlight_file(
+        test_path,
+        n_features=n_original_features,
+    )
+    X_train = X_train_sparse.toarray().astype(np.float32)
+    X_test = X_test_sparse.toarray().astype(np.float32)
+    y_train = y_train.astype(np.int64)
+    y_test = y_test.astype(np.int64)
+
+    feature_min = X_train.min(axis=0)
+    feature_max = X_train.max(axis=0)
+    constant_mask = np.isclose(feature_max, feature_min)
+    nonconstant_mask = ~constant_mask
+    original_ids = np.arange(1, n_original_features + 1, dtype=int)
+    nonconstant_ids = original_ids[nonconstant_mask]
+
+    X_train_nonconstant = X_train[:, nonconstant_mask]
+    X_test_nonconstant = X_test[:, nonconstant_mask]
+    unique_indices, duplicate_positions = _find_unique_columns(X_train_nonconstant)
+    X_train_final = X_train_nonconstant[:, unique_indices]
+    X_test_final = X_test_nonconstant[:, unique_indices]
+    final_ids = nonconstant_ids[unique_indices]
+    duplicate_original_ids = {
+        int(nonconstant_ids[removed]): int(nonconstant_ids[kept])
+        for removed, kept in duplicate_positions.items()
+    }
+
+    X = np.vstack((X_train_final, X_test_final)).astype(np.float32, copy=False)
+    y = np.concatenate((y_train, y_test)).astype(np.int64, copy=False)
+    test_indices = np.arange(X_train_final.shape[0], X.shape[0], dtype=int)
+    feature_names = [f"feature_{feature_id}" for feature_id in final_ids]
+    metadata = {
+        "source_format": "svmlight",
+        "source_files": {
+            "train": {"name": train_path.name, "sha256": _sha256(train_path)},
+            "test": {"name": test_path.name, "sha256": _sha256(test_path)},
+        },
+        "original_feature_count": n_original_features,
+        "constant_feature_ids": original_ids[constant_mask].tolist(),
+        "duplicate_feature_mapping": {str(removed): kept for removed, kept in duplicate_original_ids.items()},
+        "final_feature_ids": final_ids.tolist(),
+        "final_feature_count": int(final_ids.size),
+        "source_train_rows": int(X_train_final.shape[0]),
+        "source_test_rows": int(X_test_final.shape[0]),
+        "source_train_label_counts": _label_counts(y_train),
+        "source_test_label_counts": _label_counts(y_test),
+        "preprocessing_fit_scope": "source_train_only",
+    }
+    return X, y, feature_names, test_indices, metadata
+
+
 # Registry of config-selectable datasets. Adding a compliant dataset is a registry entry; the
 # loading logic below is dataset-agnostic (counts are derived). Each loader takes the effective
 # config (so file-based datasets can read config.data_dir) and returns a ``_LoaderResult``.
@@ -113,9 +225,16 @@ def load(config: IrfsConfig) -> LoadedDataset:
     variable (``None`` otherwise). Raises ``ValueError`` for an unknown dataset name.
     """
     name = config.dataset
-    if name not in _LOADERS:
-        raise ValueError(f"Unknown dataset {name!r}; available: {sorted(_LOADERS)}")
-    X, y, feature_names, groups = _LOADERS[name](config)
+    available = (*_LOADERS, "radar_ship")
+    if name not in available:
+        raise ValueError(f"Unknown dataset {name!r}; available: {sorted(available)}")
+    predefined_test_indices = None
+    metadata = None
+    if name == "radar_ship":
+        X, y, feature_names, predefined_test_indices, metadata = _load_radar_ship(config.data_dir)
+        groups = None
+    else:
+        X, y, feature_names, groups = _LOADERS[name](config)
     n_features = X.shape[1]  # derived from the data, not assumed
     n_classes = int(np.unique(y).size)
     return LoadedDataset(
@@ -125,4 +244,6 @@ def load(config: IrfsConfig) -> LoadedDataset:
         n_features=n_features,
         n_classes=n_classes,
         groups=groups,
+        predefined_test_indices=predefined_test_indices,
+        metadata=metadata,
     )
