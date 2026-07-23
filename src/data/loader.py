@@ -132,13 +132,13 @@ def _label_counts(y: np.ndarray) -> dict[str, int]:
 
 def _load_radar_ship(
     data_dir: str,
-) -> tuple[np.ndarray, np.ndarray, list[str], np.ndarray, dict]:
+) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
     """Load and leakage-safely clean the supplied radar-ship SVM-light train/test files.
 
-    Constant and exact-duplicate columns are identified on the supplied training file only. The
-    resulting column mask is applied unchanged to the supplied test file. Rows are concatenated
-    only for the common dataset contract; ``predefined_test_indices`` preserves the source test
-    file as the final held-out partition.
+    Constant and exact-duplicate columns are identified on the first supplied file only, preserving
+    the established 54-feature candidate pool. The same column mask is applied to the second file,
+    then all rows are concatenated. Row splitting happens later over the combined rows through the
+    ordinary stratified-random splitter.
     """
     from sklearn.datasets import load_svmlight_file
 
@@ -186,7 +186,6 @@ def _load_radar_ship(
 
     X = np.vstack((X_train_final, X_test_final)).astype(np.float32, copy=False)
     y = np.concatenate((y_train, y_test)).astype(np.int64, copy=False)
-    test_indices = np.arange(X_train_final.shape[0], X.shape[0], dtype=int)
     feature_names = [f"feature_{feature_id}" for feature_id in final_ids]
     metadata = {
         "source_format": "svmlight",
@@ -205,7 +204,7 @@ def _load_radar_ship(
         "source_test_label_counts": _label_counts(y_test),
         "preprocessing_fit_scope": "source_train_only",
     }
-    return X, y, feature_names, test_indices, metadata
+    return X, y, feature_names, metadata
 
 
 # Registry of config-selectable datasets. Adding a compliant dataset is a registry entry; the
@@ -231,8 +230,17 @@ def load(config: IrfsConfig) -> LoadedDataset:
     predefined_test_indices = None
     metadata = None
     if name == "radar_ship":
-        X, y, feature_names, predefined_test_indices, metadata = _load_radar_ship(config.data_dir)
+        X, y, feature_names, metadata = _load_radar_ship(config.data_dir)
         groups = None
+        metadata = {
+            **metadata,
+            "row_split_protocol": "combine_source_files_then_stratified_random_split",
+            "source_file_row_boundary_used": False,
+            "candidate_feature_pool_note": (
+                "the established 54-feature mask is shared by every method; both files are "
+                "combined before train/validation/test row splitting"
+            ),
+        }
     else:
         X, y, feature_names, groups = _LOADERS[name](config)
     n_features = X.shape[1]  # derived from the data, not assumed

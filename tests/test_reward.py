@@ -21,6 +21,7 @@ import pytest
 from config import load_config
 from data.loader import load
 from data.splitter import make_split
+from engine.reward_overall import OverallReward
 from harness.contract import SelectionContext
 from probe import DecisionTreeProbe
 from reward.overall import overall_reward
@@ -115,6 +116,40 @@ def test_singleton_subset_has_no_penalty(context: SelectionContext) -> None:
     """A one-feature subset has no pairs, so the reward is the bare validation accuracy."""
     accuracy = context.probe.probe([7], context.split.validation).accuracy
     assert overall_reward([7], context) == pytest.approx(accuracy)
+
+
+def test_over_budget_penalty_is_normalized_and_shared_by_both_reward_paths(
+    context: SelectionContext,
+) -> None:
+    """Both MARLFS and Full-IRFS implement lambda*max(0,(|S|-k)/k)."""
+    selected = [0, 1, 2, 3]
+    config = load_config(
+        {
+            "correlation_penalty_weight": 0.0,
+            "feature_budget": 3,
+            "over_budget_penalty_weight": 0.12,
+        }
+    )
+    configured = context._replace(config=config)
+    accuracy = context.probe.probe(selected, context.split.validation).accuracy
+    expected = accuracy - 0.12 * (1.0 / 3.0)
+
+    assert overall_reward(selected, configured) == pytest.approx(expected)
+    marlfs_reward = OverallReward()
+    unpenalized = context._replace(
+        config=load_config({"correlation_penalty_weight": 0.0, "feature_budget": 3})
+    )
+    assert marlfs_reward.reward(selected, unpenalized) == pytest.approx(accuracy)
+    assert overall_reward(selected[:3], configured) == pytest.approx(
+        context.probe.probe(selected[:3], context.split.validation).accuracy
+    )
+
+
+def test_budget_config_validation() -> None:
+    with pytest.raises(ValueError, match="feature_budget"):
+        load_config({"feature_budget": 0})
+    with pytest.raises(ValueError, match="over_budget_penalty_weight"):
+        load_config({"over_budget_penalty_weight": -0.01})
 
 
 # === Per-agent personalization (COMP-009) =========================================================

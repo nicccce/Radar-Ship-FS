@@ -3,12 +3,13 @@
 Computes the single reward every selected agent learns from: downstream Decision-Tree accuracy
 rewards good subsets, while redundancy among the chosen features is penalized. The value is
 
-    reward = accuracy − β · (average intra-subset correlation)
+    reward = accuracy − β·correlation − λ·max(0, (|S|−budget)/budget)
 
 where ``accuracy`` is the shared probe's score for the subset and ``average intra-subset
 correlation`` is the mean absolute Pearson correlation over every pair of selected features. β is
-the configurable correlation-penalty weight read from configuration (REQ-012). With fewer than two
-selected features there are no pairs, so the penalty is ``0.0`` and the reward is the bare accuracy.
+the configurable correlation-penalty weight read from configuration (REQ-012). The optional budget
+penalty is normalized by ``feature_budget``; with fewer than two selected features the correlation
+term is ``0.0``.
 
 Leakage invariant (REQ-010 / AC-007): both the accuracy and the correlation are computed **only**
 from the validation partition. The test partition is never read — it has no public attribute on
@@ -28,6 +29,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import numpy as np
+
+from reward.budget import over_budget_penalty
 
 if TYPE_CHECKING:
     from harness.contract import SelectionContext
@@ -60,25 +63,25 @@ def _average_pairwise_abs_corr(corr: np.ndarray, selected: Sequence[int]) -> flo
 
 
 class OverallReward:
-    """Uniform ``accuracy − β·avg-intra-subset-correlation`` reward on the validation partition.
+    """Uniform accuracy-minus-configured-penalties reward on the validation partition.
 
     Satisfies ``engine.seam.RewardFunction`` structurally: a single :meth:`reward` taking the shared
     context and an optional (ignored) ``agent``, returning one float applied to all agents.
 
     Because the value ignores ``agent`` (uniform this phase), it is a pure function of the subset,
-    the validation partition, and β — so identical calls are memoized, exactly as
+    the validation partition, β, budget, and λ — so identical calls are memoized, exactly as
     :class:`~probe.DecisionTreeProbe` memoizes its fits. The exploration loop calls this once per
     feature-agent per step with the *same* subset (``n_features`` calls that all return one value);
     the first computes the pairwise-correlation penalty and the rest are cache hits, and a subset
     that recurs across steps is free. The cache lives on the instance — one per run — so it is
-    bounded by the run's distinct ``(subset, validation, β)`` keys and discarded with the reward.
+    bounded by distinct ``(subset, validation, β, budget, λ)`` keys and discarded with the reward.
     """
 
     def __init__(self) -> None:
         # Memo keyed on the subset bytes, the validation partition's row indices (content, not
         # object identity), and β — so a changed partition or penalty weight never returns a stale
         # value. Mirrors the probe's caching contract.
-        self._cache: dict[tuple[bytes, bytes, float], float] = {}
+        self._cache: dict[tuple[bytes, bytes, float, Optional[int], float], float] = {}
         # Per validation-partition memo of the full feature ``|corr|`` matrix, built once from the
         # same pointwise :func:`_abs_corr` so the correlation penalty is bit-identical to the former
         # per-pair computation; keyed on the partition's row indices (content, not identity).
@@ -114,22 +117,31 @@ class OverallReward:
         *,
         agent: Optional[int] = None,
     ) -> float:
-        """Return ``accuracy − β·average-intra-subset-correlation`` for ``selected``.
+        """Return accuracy minus correlation and optional normalized over-budget penalties.
 
         Accuracy is the shared probe's score for the subset on the validation partition; the
         correlation penalty is the mean absolute pairwise correlation of the selected features on
-        that same partition; β is ``context.config.correlation_penalty_weight``. ``agent`` is
+        that same partition; β is ``context.config.correlation_penalty_weight``. When configured,
+        ``lambda*max(0,(|S|-budget)/budget)`` is also subtracted. ``agent`` is
         accepted for seam conformance but ignored — the reward is uniform across agents this phase.
 
-        Memoized on ``(subset, validation indices, β)``: repeat calls with the same subset (every
-        agent in a step) and recurring subsets across steps return the cached value, collapsing the
+        Memoized on ``(subset, validation indices, β, budget, λ)``: repeat calls with the same subset
+        (every agent in a step) and recurring subsets across steps return the cached value, collapsing the
         per-agent recomputation of the O(k²) correlation penalty to once per distinct subset.
         """
         validation = context.split.validation
         beta = context.config.correlation_penalty_weight
+        feature_budget = getattr(context.config, "feature_budget", None)
+        budget_weight = float(getattr(context.config, "over_budget_penalty_weight", 0.0))
 
         subset_idx = np.asarray(selected, dtype=int)
-        cache_key = (subset_idx.tobytes(), np.asarray(validation.indices).tobytes(), float(beta))
+        cache_key = (
+            subset_idx.tobytes(),
+            np.asarray(validation.indices).tobytes(),
+            float(beta),
+            feature_budget,
+            budget_weight,
+        )
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -137,6 +149,6 @@ class OverallReward:
         accuracy = context.probe.probe(selected, validation).accuracy
         average_correlation = _average_pairwise_abs_corr(self._corr_matrix(validation), selected)
 
-        value = float(accuracy - beta * average_correlation)
+        value = float(accuracy - beta * average_correlation - over_budget_penalty(selected, context))
         self._cache[cache_key] = value
         return value

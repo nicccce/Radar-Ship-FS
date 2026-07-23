@@ -1,13 +1,14 @@
-"""Overall reward calculator (COMP-008) — accuracy minus a correlation penalty.
+"""Overall reward calculator (COMP-008) — accuracy minus configured penalties.
 
 Computes the single scalar reward the per-agent personalizer (COMP-009 / TASK-404) shapes into a
 per-agent signal:
 
-    reward = accuracy − β · (average intra-subset feature correlation)
+    reward = accuracy − β·correlation − λ·max(0, (|S|−budget)/budget)
 
 where ``accuracy`` is the shared Decision-Tree probe's score for the subset on the **validation**
 partition (the per-step, non-test evaluation surface, DEC-005) and the correlation penalty is the
-mean absolute pairwise correlation of the selected features. β is ``config.correlation_penalty_weight``.
+mean absolute pairwise correlation of the selected features. The optional normalized over-budget term
+is zero when ``feature_budget`` is unset or its weight λ is zero.
 
 **Reuse boundary (DEC-003).** The correlation penalty is read from the state block's correlation graph
 (:func:`state.graph.average_pairwise_abs_correlation`) rather than recomputed here, so the reward's
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Sequence
 
+from reward.budget import over_budget_penalty
 from state.graph import average_pairwise_abs_correlation, build_correlation_graph
 
 if TYPE_CHECKING:
@@ -36,13 +38,14 @@ if TYPE_CHECKING:
 
 
 def overall_reward(selected: Sequence[int], context: "SelectionContext") -> float:
-    """Return ``accuracy − β·average-intra-subset-correlation`` for ``selected``.
+    """Return accuracy minus correlation and optional normalized over-budget penalties.
 
     Accuracy is the shared probe's score on the validation partition; the correlation penalty is
     reused from the state block's correlation graph (DEC-003); β is
-    ``context.config.correlation_penalty_weight``.
+    ``context.config.correlation_penalty_weight``. The shared budget helper applies
+    ``lambda*max(0,(|S|-budget)/budget)`` when enabled.
     """
     accuracy = context.probe.probe(selected, context.split.validation).accuracy
     average_correlation = average_pairwise_abs_correlation(build_correlation_graph(selected, context))
     beta = context.config.correlation_penalty_weight
-    return float(accuracy - beta * average_correlation)
+    return float(accuracy - beta * average_correlation - over_budget_penalty(selected, context))

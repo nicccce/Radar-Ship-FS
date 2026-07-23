@@ -63,6 +63,17 @@ class Split:
         """
         return self._test
 
+    def replace_development_for_inner_cv(self, development: Partition) -> "Split":
+        """Return an inner-CV view while keeping the existing test partition sealed.
+
+        Both public partition handles intentionally point at the complete development partition:
+        legacy selection components read ``train`` for state/relevance data and pass ``validation``
+        to the probe, while the cross-validated probe performs the actual disjoint fold split.
+        The held-out test object is transferred privately without calling the final-metrics release
+        method, so feature search still has no test access path.
+        """
+        return Split(train=development, validation=development, test=self._test)
+
 
 def _draw_split_seed(rng: SeededRng) -> int:
     """Draw one ``random_state`` integer from the single shared RNG (CON-003).

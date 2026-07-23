@@ -20,9 +20,10 @@ All Features / KBest / 连续可微子集
         -> Full-IRFS-trained-GCN
 ```
 
-其中 RL 搜索阶段保留上游代码的 Decision Tree 验证反馈；冻结特征子集后的最终主表计划统一使用
-`StandardScaler + LogisticRegression` 在独立测试集上评价。这个最终 LR scorer 是项目后续改造项，
-不要直接替换训练期的 `DecisionTreeProbe`。
+阶段 2 的 RL 搜索在 80% development 内使用固定分层 5 折 Decision Tree 平均准确率作为反馈，
+外层 20% test 在搜索期保持密封。RL 筛选完成后，独立评价入口用全部 development 训练新的
+Decision Tree，再在 test 上统一比较 All Features、KBest 和三种 RL 前面筛选出的特征。
+Logistic Regression scorer 仍保留为可选的独立评价模块，但不进入 RL engine 或 reward。
 
 ## 目录结构
 
@@ -87,6 +88,67 @@ python src/run_irfs.py --dataset wdbc --seeds 42 --diagnostic-ablations
 默认实验产物会写入 `experiments/<dataset>/seed-<seed>/`，跨随机种子的聚合结果写入
 `experiments/<dataset>/aggregate.json`。
 
+## 阶段 2 雷达 RL 正式实验
+
+正式协议先合并两个 SVM-light 文件的 2304 行，再按每个 seed 分层随机划分为 1843 行
+development 和 461 行 test。RL 只在 development 内做固定分层 5 折交叉验证：每个候选特征集
+训练 5 棵 Decision Tree，并用 5 个留出折准确率均值作为选择分数。test 不参与特征选择。
+
+RL 搜索运行 MARLFS、Full-IRFS-fixed 和 Full-IRFS-trained-GCN。每种方法运行 250 步，
+Hybrid Teaching 的零基边界为 83/166：`[0,83)` 使用 relevance trainer，`[83,166)` 使用
+DT-importance trainer，`[166,250)` 不再使用 trainer；候选分数相同时选择特征更少的一组：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_stage2_rl_selection.py
+```
+
+RL 完成并保存特征编号后，独立入口用全部 development 训练最终 Decision Tree，并在 test 上评价
+All Features、KBest-27、三种 RL 前面筛选出的特征，以及与 Full-IRFS-fixed 同规模的 KBest：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_stage2_dt_test.py
+```
+
+如需补充 Logistic Regression 评价，可在选择完成后单独运行；它只读取已保存的特征，不会重新运行 RL：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_stage2_rl_final_lr.py
+```
+
+针对 RL 子集经常超过 MI-27 预算的问题，另有独立的超预算惩罚扫描。它固定
+`beta=0.02`、`k=27`，扫描 `lambda={0.01, 0.025, 0.05, 0.1}`：
+
+```text
+J(S) = Accuracy_CV(S) - beta * Corr(S) - lambda * max(0, (|S| - 27) / 27)
+```
+
+RL 学习期间仍可访问超过 27 个特征的子集，但最终只在初始 27 特征与 250 步轨迹中
+`|S| <= 27` 的候选里按 inner-CV DT Accuracy 选最优（同分取更少特征）。一键入口会先完成
+全部 4×4 个密封搜索并预检产物，随后才解封 outer test：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_stage2_budget_sweep.py
+```
+
+纯 Accuracy 控制（`beta=0、lambda=0`，但保留最终 `|S|<=27` 的公平筛选）使用独立入口：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_stage2_accuracy_only.py
+```
+
+
+
+这些正式入口都不接收命令行实验参数：
+
+- 配置统一写在 `src/stage2_rl_config.py`；
+- 每个 seed 的 461 行随机 test 在搜索期保持密封；
+- 搜索入口不导入 `lr_final`，只用 development 内部 5 折 DT 分数；
+- DT 评价入口不会重新运行 RL，只读取 `selection.json` 中前面筛选出的特征编号；
+- KBest 的 Mutual Information 只在该 seed 的 development 上拟合；
+- 每个方法保存 250 步原始轨迹、逐折准确率、均值/标准差和子集变化，并生成跨 seed 聚合 CSV。
+
+重复执行搜索入口时，与当前代码内配置完全匹配的已完成方法会被跳过；配置签名不一致时不会误用旧产物。
+
 ## 数据约定
 
 本地数据内容不提交到 Git。建议按下面约定放置：
@@ -102,8 +164,8 @@ X  # shape: [num_samples, num_features]
 y  # shape: [num_samples]
 ```
 
-训练、奖励验证和最终测试建议采用 `60% / 20% / 20%` 固定划分，并确保标准化、填补、筛选器拟合、
-相关矩阵和模型训练都不使用最终测试集。
+当前阶段 2 使用外层 `80% development / 20% test`，并在 development 内做 5 折选择；标准化、
+填补、筛选器拟合、相关矩阵和搜索期模型训练都不得使用最终 test。
 
 ## 结果约定
 

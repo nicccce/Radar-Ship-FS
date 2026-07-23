@@ -192,7 +192,7 @@ def test_radar_ship_loader_cleans_features_from_source_train_only(radar_ship_dat
     assert data.X.dtype == np.float32
     assert data.y.dtype == np.int64
     assert data.feature_names == ["feature_1", "feature_3"]
-    np.testing.assert_array_equal(data.predefined_test_indices, np.arange(8, 12))
+    assert data.predefined_test_indices is None
 
     metadata = data.metadata
     assert metadata["original_feature_count"] == 75
@@ -200,13 +200,15 @@ def test_radar_ship_loader_cleans_features_from_source_train_only(radar_ship_dat
     assert 2 in metadata["constant_feature_ids"]  # test-only variation cannot rescue this column
     assert metadata["duplicate_feature_mapping"] == {"4": 3}
     assert metadata["preprocessing_fit_scope"] == "source_train_only"
+    assert metadata["source_file_row_boundary_used"] is False
 
 
-def test_radar_ship_split_preserves_source_test_file(radar_ship_data_dir: str) -> None:
+def test_radar_ship_combines_files_and_resplits_all_rows(radar_ship_data_dir: str) -> None:
     config = load_config(
         {
             "dataset": "radar_ship",
             "data_dir": radar_ship_data_dir,
+            "test_fraction": 0.2,
             "validation_fraction": 0.25,
         }
     )
@@ -214,8 +216,12 @@ def test_radar_ship_split_preserves_source_test_file(radar_ship_data_dir: str) -
     split = make_split(data, config, init_rng(42))
     held_out = split.release_test_for_final_metrics()
 
-    np.testing.assert_array_equal(held_out.indices, np.arange(8, 12))
+    assert data.predefined_test_indices is None
+    assert data.metadata["source_file_row_boundary_used"] is False
+    assert data.X.shape == (12, 2)
+    assert (split.train.X.shape[0], split.validation.X.shape[0], held_out.X.shape[0]) == (6, 3, 3)
+    combined = set(split.train.indices) | set(split.validation.indices) | set(held_out.indices)
+    assert combined == set(range(12))
+    assert set(split.train.indices).isdisjoint(split.validation.indices)
     assert set(split.train.indices).isdisjoint(held_out.indices)
     assert set(split.validation.indices).isdisjoint(held_out.indices)
-    assert set(split.train.indices) | set(split.validation.indices) == set(range(8))
-    assert split.train.metadata["final_feature_ids"] == [1, 3]

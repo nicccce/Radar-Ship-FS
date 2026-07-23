@@ -37,6 +37,7 @@ side satisfaction of the common subset contract).
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, List, Optional
 
 from engine.agents import build_agents
@@ -78,9 +79,12 @@ class ReinforcedEngine:
         self._advisor: "Optional[ActionAdvisor]" = advisor
 
     def _initial_subset(self, context: "SelectionContext") -> tuple[int, ...]:
-        """A deterministic random half of the features — non-empty and not all (non-degenerate)."""
+        """A deterministic random half, capped by the configured feature budget when present."""
         n = context.n_features
         k = max(1, n // 2)
+        feature_budget = getattr(context.config, "feature_budget", None)
+        if feature_budget is not None:
+            k = min(k, int(feature_budget))
         chosen = context.rng.numpy.choice(n, size=k, replace=False)
         return tuple(sorted(int(i) for i in chosen))
 
@@ -120,6 +124,23 @@ class ReinforcedEngine:
                 discount=discount,
             )
         return None
+
+    @staticmethod
+    def _is_better_candidate(
+        accuracy: float,
+        subset: tuple[int, ...],
+        best_accuracy: float,
+        best_subset: tuple[int, ...],
+        feature_budget: Optional[int] = None,
+    ) -> bool:
+        """Reject over-budget candidates, then prefer accuracy and finally fewer features."""
+        if feature_budget is not None and len(subset) > feature_budget:
+            return False
+        if accuracy > best_accuracy and not math.isclose(accuracy, best_accuracy, rel_tol=0.0, abs_tol=1e-12):
+            return True
+        return math.isclose(accuracy, best_accuracy, rel_tol=0.0, abs_tol=1e-12) and len(subset) < len(
+            best_subset
+        )
 
     def _vote(
         self,
@@ -214,14 +235,16 @@ class ReinforcedEngine:
         if learner is not None:
             learner.step(memory, context, rng, batch_size=mini_batch_size)
 
-    def select(self, context: "SelectionContext", *, on_step=None) -> "SubsetSelection":
+    def select(self, context: "SelectionContext", *, on_step=None, on_initial=None) -> "SubsetSelection":
         """Run the synchronous population-vote loop and return the best subset + per-step series.
 
         Each step: every agent votes (:meth:`_vote`), the new subset is scored once on validation
         (:meth:`_score`), the best-so-far is tracked, and the agents learn from the transition
         (:meth:`_learn_step`). ``on_step``, when supplied, is an optional progress hook called once per
         step as ``on_step(step, budget, accuracy, best_accuracy)`` (0-based ``step``). It is purely
-        observational — it never touches the RNG, the subset, or the learning — so a run with a hook
+        observational. ``on_initial(subset, accuracy)`` exposes the actual initial candidate; its
+        accuracy is ``None`` when budget-aware candidate scoring is disabled. Neither hook touches the
+        RNG, subset, or learning, so a run with a hook
         is bit-identical to one without. Default ``None`` keeps the engine silent (tests unaffected).
         """
         rng = context.rng
@@ -232,17 +255,24 @@ class ReinforcedEngine:
         mini_batch_size = config.mini_batch_size
         discount = config.discount
         learning_rate = config.learning_rate
+        feature_budget = getattr(config, "feature_budget", None)
 
         agents = build_agents(context, self._encoder)
         memory = ExperienceMemory()
 
-        committed = self._initial_subset(context)
+        initial_subset = self._initial_subset(context)
+        committed = initial_subset
         states = self._encode_all(agents, committed, context)
         learner = self._make_joint_learner(agents, learning_rate, discount)
 
         per_step: List[StepRecord] = []
-        best_subset = committed
-        best_accuracy = -1.0
+        best_subset = initial_subset
+        # Budget-aware experiments include the initial feasible subset in the candidate pool. With
+        # no budget configured, preserve the historical per-step-only selection rule.
+        initial_accuracy = self._score(context, initial_subset) if feature_budget is not None else None
+        best_accuracy = initial_accuracy if initial_accuracy is not None else -1.0
+        if on_initial is not None:
+            on_initial(initial_subset, initial_accuracy)
 
         for step in range(budget):
             actions, new_subset = self._vote(
@@ -251,7 +281,13 @@ class ReinforcedEngine:
 
             accuracy = self._score(context, new_subset)
             per_step.append(StepRecord(subset=new_subset, accuracy=accuracy))
-            if accuracy > best_accuracy:
+            if self._is_better_candidate(
+                accuracy,
+                new_subset,
+                best_accuracy,
+                best_subset,
+                feature_budget,
+            ):
                 best_accuracy, best_subset = accuracy, new_subset
 
             next_states = self._encode_all(agents, new_subset, context)

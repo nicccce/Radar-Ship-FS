@@ -92,6 +92,11 @@ class IrfsConfig:
     # --- Reward (ASM-004): headline full-IRFS scheme + correlation-penalty weight beta ---
     reward_scheme: str = "dt_importance"
     correlation_penalty_weight: float = 1.0  # beta; configurable default
+    # Optional soft cardinality constraint:
+    #   lambda * max(0, (|S| - feature_budget) / feature_budget)
+    # Disabled by default so historical no-budget selection behavior remains unchanged.
+    feature_budget: Optional[int] = None
+    over_budget_penalty_weight: float = 0.0  # lambda
 
     # --- Hybrid teaching schedule (COMP-004): the two switch points that sequence the
     # relevance trainer, then the DT-importance trainer, then withdraw guidance (REQ-004).
@@ -137,4 +142,10 @@ def load_config(overrides: Optional[Mapping[str, Any]] = None) -> IrfsConfig:
         resolved["seeds"] = tuple(int(s) for s in resolved["seeds"])
         if not resolved["seeds"]:
             raise ValueError("seeds must contain at least one seed")
+    if resolved.get("feature_budget") is not None:
+        resolved["feature_budget"] = int(resolved["feature_budget"])
+        if resolved["feature_budget"] <= 0:
+            raise ValueError("feature_budget must be positive")
+    if float(resolved.get("over_budget_penalty_weight", base.over_budget_penalty_weight)) < 0.0:
+        raise ValueError("over_budget_penalty_weight must be non-negative")
     return replace(base, **resolved)

@@ -1,7 +1,7 @@
-"""Unified final Logistic-Regression scorer for frozen feature subsets.
+"""Unified final Logistic-Regression scorer for selected feature sets.
 
 The scorer has no feature-selection logic. It fits StandardScaler and LogisticRegression on the
-full development training data supplied by the caller, then evaluates the already-frozen subset on
+full development training data supplied by the caller, then evaluates the already-selected features on
 the held-out test data exactly once.
 """
 
@@ -37,7 +37,7 @@ class LogisticRegressionMetrics(NamedTuple):
     positive_label: int
 
 
-def score_frozen_subset_with_lr(
+def score_selected_features_with_lr(
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_test: np.ndarray,
@@ -50,7 +50,7 @@ def score_frozen_subset_with_lr(
     class_weight: Optional[str] = "balanced",
     random_state: int = 42,
 ) -> LogisticRegressionMetrics:
-    """Fit the shared LR pipeline on training data and score one frozen subset on test."""
+    """Fit the shared LR pipeline on training data and score selected features on test."""
     subset_idx = np.asarray(sorted({int(index) for index in subset}), dtype=int)
     if subset_idx.size == 0:
         raise ValueError("subset must contain at least one feature")

@@ -1,13 +1,13 @@
 """Per-agent reward personalizer (COMP-009) — splits the overall reward across agents.
 
-Turns the single overall reward ``(Acc − βR)`` (COMP-008 / :func:`reward.overall.overall_reward`)
+Turns the single overall objective ``J(S)`` (COMP-008 / :func:`reward.overall.overall_reward`)
 into a per-agent reward vector, implementing the reference method's two personalization schemes
 (Section 3.3) selected by ``config.reward_scheme``:
 
-- **Decision-Tree importance (3.3.1, headline / ASM-001).** ``r_i = I_i · (Acc − βR)`` for a selected
+- **Decision-Tree importance (3.3.1, headline / ASM-001).** ``r_i = I_i · J(S)`` for a selected
   agent, where ``I_i`` is the feature's Decision-Tree importance from the shared probe; ``0`` for a
   deselected agent.
-- **Historical selection frequency (3.3.2, alternate / Q-001).** ``r_i = W_i · (Acc − βR)`` for a
+- **Historical selection frequency (3.3.2, alternate / Q-001).** ``r_i = W_i · J(S)`` for a
   selected agent, where ``W_i = (Σ m_i) / Σ_j (Σ m_j)`` is the agent's share of all historical
   selections; ``0`` for a deselected agent.
 
@@ -19,8 +19,8 @@ case).
 **Scope boundary.** This module owns the weighting math and scheme selection only. It does not store
 rewards to the engine's experience memory, and it does not fetch the historical action records itself —
 the ``selection_counts`` for the frequency scheme are supplied by the caller (TASK-405, which owns the
-engine binding and has the experience memory). The correlation definition inside ``(Acc − βR)`` lives in
-COMP-008, not here.
+engine binding and has the experience memory). The correlation and optional budget terms inside
+``J(S)`` live in COMP-008, not here.
 
 **Leakage safety (REQ-013).** Inherited from :func:`overall_reward` (validation accuracy, train-based
 correlation) and the train-fit probe importances; no test partition is read. The transformation consumes
