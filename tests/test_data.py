@@ -1,9 +1,9 @@
-"""Data domain (D1): dataset loading and leakage-safe splitting.
+"""Data domain (D1): dataset loading and splitting.
 
 Covers ``data/loader.py`` (config-selected datasets, feature/class counts derived from the data,
 per-row grouping for datasets that define it) and ``data/splitter.py`` (disjoint
-train/validation/test partitions with a structurally *sealed* test slice, group-aware so no group
-spans partitions — REQ-022).
+train/validation/test partitions, predefined test rows, and group-aware splitting so no group spans
+partitions — REQ-022).
 
 WDBC comes from ``sklearn.load_breast_cancer`` (library-bundled, not a repo artifact); the grouped-
 dataset path is exercised by synthesising a ``pd_speech_features.csv`` in a tmp dir — no test reads
@@ -115,7 +115,7 @@ def test_partitions_are_disjoint_and_cover_the_dataset() -> None:
 
     train = set(split.train.indices.tolist())
     val = set(split.validation.indices.tolist())
-    test = set(split.release_test_for_final_metrics().indices.tolist())
+    test = set(split.test.indices.tolist())
 
     assert train.isdisjoint(val) and train.isdisjoint(test) and val.isdisjoint(test)
     total = data.X.shape[0]
@@ -123,18 +123,11 @@ def test_partitions_are_disjoint_and_cover_the_dataset() -> None:
     assert len(test) == pytest.approx(total * config.test_fraction, abs=2)
 
 
-def test_test_partition_is_structurally_sealed() -> None:
-    """The test partition has no public attribute — the accidental-leakage expression ``split.test``
-    raises — and is reachable only through the loud ``release_test_for_final_metrics`` opt-in
-    (REQ-002)."""
+def test_split_exposes_all_three_partitions() -> None:
     _config, _data, split = _wdbc_split()
 
-    assert not hasattr(split, "test")
-    with pytest.raises(AttributeError):
-        _ = split.test  # type: ignore[attr-defined]
-
-    held_out = split.release_test_for_final_metrics()
-    assert isinstance(held_out, Partition) and held_out.X.shape[0] > 0
+    assert all(isinstance(partition, Partition) for partition in split)
+    assert split.test.X.shape[0] > 0
 
 
 def test_split_keeps_each_group_whole(parkinsons_data_dir: str) -> None:
@@ -149,7 +142,7 @@ def test_split_keeps_each_group_whole(parkinsons_data_dir: str) -> None:
 
     train = subjects(split.train.indices)
     val = subjects(split.validation.indices)
-    test = subjects(split.release_test_for_final_metrics().indices)
+    test = subjects(split.test.indices)
 
     assert train.isdisjoint(val) and train.isdisjoint(test) and val.isdisjoint(test)
 
@@ -192,7 +185,7 @@ def test_radar_ship_loader_cleans_features_from_source_train_only(radar_ship_dat
     assert data.X.dtype == np.float32
     assert data.y.dtype == np.int64
     assert data.feature_names == ["feature_1", "feature_3"]
-    assert data.predefined_test_indices is None
+    assert data.test_indices.tolist() == [8, 9, 10, 11]
 
     metadata = data.metadata
     assert metadata["original_feature_count"] == 75
@@ -200,28 +193,32 @@ def test_radar_ship_loader_cleans_features_from_source_train_only(radar_ship_dat
     assert 2 in metadata["constant_feature_ids"]  # test-only variation cannot rescue this column
     assert metadata["duplicate_feature_mapping"] == {"4": 3}
     assert metadata["preprocessing_fit_scope"] == "source_train_only"
-    assert metadata["source_file_row_boundary_used"] is False
+    assert metadata["source_file_row_boundary_used"] is True
 
 
-def test_radar_ship_combines_files_and_resplits_all_rows(radar_ship_data_dir: str) -> None:
+def test_radar_ship_keeps_source_test_rows_as_test(radar_ship_data_dir: str) -> None:
     config = load_config(
         {
             "dataset": "radar_ship",
             "data_dir": radar_ship_data_dir,
-            "test_fraction": 0.2,
             "validation_fraction": 0.25,
         }
     )
     data = load(config)
     split = make_split(data, config, init_rng(42))
-    held_out = split.release_test_for_final_metrics()
 
-    assert data.predefined_test_indices is None
-    assert data.metadata["source_file_row_boundary_used"] is False
+    assert data.test_indices.tolist() == [8, 9, 10, 11]
+    assert data.metadata["source_file_row_boundary_used"] is True
     assert data.X.shape == (12, 2)
-    assert (split.train.X.shape[0], split.validation.X.shape[0], held_out.X.shape[0]) == (6, 3, 3)
-    combined = set(split.train.indices) | set(split.validation.indices) | set(held_out.indices)
+    assert (split.train.X.shape[0], split.validation.X.shape[0], split.test.X.shape[0]) == (6, 2, 4)
+    assert split.test.indices.tolist() == [8, 9, 10, 11]
+    np.testing.assert_array_equal(
+        split.test.X,
+        np.asarray([[10, 1], [11, 0], [12, 1], [13, 0]], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(split.test.y, np.asarray([-1, -1, 1, 1], dtype=np.int64))
+    combined = set(split.train.indices) | set(split.validation.indices) | set(split.test.indices)
     assert combined == set(range(12))
     assert set(split.train.indices).isdisjoint(split.validation.indices)
-    assert set(split.train.indices).isdisjoint(held_out.indices)
-    assert set(split.validation.indices).isdisjoint(held_out.indices)
+    assert set(split.train.indices).isdisjoint(split.test.indices)
+    assert set(split.validation.indices).isdisjoint(split.test.indices)

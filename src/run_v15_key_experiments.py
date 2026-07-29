@@ -30,7 +30,7 @@ def _run_beta_point(
     dt_test_root,
     table_prefix: str,
 ) -> None:
-    """Run one old-data-selected beta value through sealed selection and DT test."""
+    """Run one old-data-selected beta value through selection and DT test."""
     beta_selection.BETA_SWEEP_VALUES = (float(beta),)
     beta_dt_test.BETA_SWEEP_VALUES = (float(beta),)
     beta_selection.configure_variant(

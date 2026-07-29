@@ -12,9 +12,7 @@ penalty is normalized by ``feature_budget``; with fewer than two selected featur
 term is ``0.0``.
 
 Leakage invariant (REQ-010 / AC-007): both the accuracy and the correlation are computed **only**
-from the validation partition. The test partition is never read — it has no public attribute on
-``Split`` and is released solely through ``release_test_for_final_metrics``, which this reward
-never calls — so no per-step decision can touch held-out data.
+from the validation partition. Test data is not used by this reward.
 
 The reward is applied uniformly: the seam's ``agent`` argument is accepted (the engine passes it)
 but ignored, so every selected agent receives the same value this phase (AC-006). PHASE-004's

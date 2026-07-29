@@ -23,6 +23,7 @@ from harness.lr_final import lr_metrics_to_dict, score_selected_features_with_lr
 from harness.orchestrator import build_run_context
 from run_stage2_rl_selection import _config_for_encoder
 from stage2_rl_config import (
+    ACTIVE_RL_METHOD_SPECS,
     DATASET,
     EXPECTED_CLEAN_FEATURES,
     FINAL_LR_ROOT,
@@ -30,7 +31,6 @@ from stage2_rl_config import (
     LR_CLASS_WEIGHT,
     LR_MAX_ITER,
     LR_SOLVER,
-    RL_METHOD_SPECS,
     SEEDS,
     SELECTION_ROOT,
     TABLE_PREFIX,
@@ -78,8 +78,8 @@ def _jaccard(left: Sequence[int], right: Sequence[int]) -> float:
 def _development_and_test(
     context: SelectionContext,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Combine all development rows and release the outer test only for final scoring."""
-    test = context.split.release_test_for_final_metrics()
+    """Return all development rows and the source test rows."""
+    test = context.split.test
     return (
         np.vstack((context.split.train.X, context.split.validation.X)),
         np.concatenate((context.split.train.y, context.split.validation.y)),
@@ -101,11 +101,10 @@ def _load_selection(seed: int, method: str) -> tuple[dict[str, Any], Path]:
         raise ValueError(f"selection method mismatch in {path}")
     protocol = artifact.get("protocol", {})
     if (
-        protocol.get("official_test_accessed") is not False
-        or protocol.get("held_out_random_test_accessed") is not False
+        protocol.get("test_used_during_selection") is not False
         or protocol.get("lr_final_called") is not False
     ):
-        raise ValueError(f"selection artifact does not satisfy the isolated search protocol: {path}")
+        raise ValueError(f"selection artifact is not selection-only: {path}")
     subset = artifact.get("selected_clean_indices", [])
     if not subset:
         raise ValueError(f"selection artifact has no selected features: {path}")
@@ -151,9 +150,9 @@ def _run_one(
             "selection_was_modified": False,
             "final_model": "StandardScaler + LogisticRegression",
             "final_lr_fit_rows": int(X_train.shape[0]),
-            "held_out_random_test_rows": int(X_test.shape[0]),
+            "source_test_rows": int(X_test.shape[0]),
             "test_role": "final_evaluation_only",
-            "row_split_protocol": "merge source files; outer 80/20; selection uses inner 5-fold CV",
+            "row_split_protocol": "source train for development; source test for evaluation",
             "search_reward_model": "DecisionTreeClassifier",
         },
         "seed": seed,
@@ -199,7 +198,7 @@ def _aggregate(results: Sequence[dict[str, Any]]) -> tuple[dict[str, Any], list[
     )
     per_seed_rows: list[dict[str, Any]] = []
     aggregate_methods: list[dict[str, Any]] = []
-    for method, _engine_name, _state_encoder in RL_METHOD_SPECS:
+    for method, _engine_name, _state_encoder in ACTIVE_RL_METHOD_SPECS:
         method_results = sorted(
             (result for result in results if result["method"] == method),
             key=lambda item: item["seed"],
@@ -282,7 +281,7 @@ def main() -> None:
     config = _config_for_encoder("fixed")
     print(
         "optional final-LR stage: fit all development rows after inner-CV selection; "
-        f"new random test only for evaluation; methods={len(RL_METHOD_SPECS)} seeds={list(SEEDS)}",
+        f"source test evaluation; methods={len(ACTIVE_RL_METHOD_SPECS)} seeds={list(SEEDS)}",
         flush=True,
     )
     results: list[dict[str, Any]] = []
@@ -294,10 +293,10 @@ def main() -> None:
             )
         X_train, y_train, X_test, y_test = _development_and_test(context)
         print(
-            f"seed={seed} final_fit_rows={X_train.shape[0]} random_test_rows={X_test.shape[0]}",
+            f"seed={seed} final_fit_rows={X_train.shape[0]} source_test_rows={X_test.shape[0]}",
             flush=True,
         )
-        for method, _engine_name, _state_encoder in RL_METHOD_SPECS:
+        for method, _engine_name, _state_encoder in ACTIVE_RL_METHOD_SPECS:
             results.append(
                 _run_one(
                     context,

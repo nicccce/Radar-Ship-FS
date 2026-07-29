@@ -1,4 +1,4 @@
-"""Build the stage-2 outer-test/inner-CV selection context."""
+"""Build the stage-2 source-train inner-CV context."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def build_stage2_cv_context(
     seed: int,
     n_splits: int,
 ) -> SelectionContext:
-    """Build one context with a sealed outer test and a stratified inner-CV DT probe."""
+    """Build a source-train inner-CV context and retain the source test partition."""
     rng = init_rng(seed)
     dataset = load(config)
     ordinary_split = make_split(dataset, config, rng)

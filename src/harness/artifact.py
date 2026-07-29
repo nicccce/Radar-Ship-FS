@@ -13,7 +13,7 @@ weight β, and the exploration parameter) surface in the configuration view auto
 engine introduces them — no schema change required.
 
 Dataset identity is derived from the training partition and configuration only; the test partition
-is never released here (it is reserved for final reported metrics).
+is not used here (it is reserved for final reported metrics).
 
 Satisfies COMP-002 -> REQ-011 (partial — classical-only artifact; completed in PHASE-003).
 """
@@ -121,7 +121,7 @@ def write_artifact(artifact: Mapping[str, Any], path: str | os.PathLike[str]) ->
 # The completed run emits TWO files under experiments/<dataset>/seed-<n>/: a selection artifact (the
 # validation surface plus provenance) and a test artifact (the held-out surface). This is a recorded
 # departure from the spec's single self-contained JSON — isolating test in its own file physically
-# mirrors the gated one-time release (TASK-503), and the per-seed folder makes a future multi-seed run
+# keeps final test results separate, and the per-seed folder makes a future multi-seed run
 # additive (fidelity note ``artifact-multi-file-layout``). The classical-only / two-method
 # ``build_artifact`` above is left untouched, so the PHASE-002 ``run.json`` format stays a strict
 # subset of the selection artifact (same dataset/seed/config/methods/comparison keys, same order).

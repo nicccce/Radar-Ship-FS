@@ -123,7 +123,7 @@ def _aggregate(seed_results: list[dict[str, Any]]) -> tuple[dict[str, Any], list
         "seeds": list(SEEDS),
         "validation_used": False,
         "selection_and_final_fit_rows": seed_results[0]["protocol"]["selection_fit_rows"],
-        "held_out_test_rows": seed_results[0]["protocol"]["held_out_test_rows"],
+        "source_test_rows": seed_results[0]["protocol"]["source_test_rows"],
         "methods": aggregate_methods,
     }
     return aggregate, flat_rows

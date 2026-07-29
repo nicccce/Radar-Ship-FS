@@ -61,9 +61,7 @@ def test_resume_rejects_oversized_selection(tmp_path) -> None:
             {
                 "experiment_signature": signature,
                 "protocol": {
-                    "official_test_accessed": False,
-                    "held_out_random_test_accessed": False,
-                    "outer_test_release_permitted": False,
+                    "test_used_during_selection": False,
                 },
                 "trajectory": [{}] * 250,
                 "selected_clean_indices": list(range(K_BEST + 1)),

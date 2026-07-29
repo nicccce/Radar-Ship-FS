@@ -48,7 +48,7 @@ class IrfsConfig:
     # result from being resumed for v15 merely because the remaining hyperparameters match.
     radar_ship_version: str = "v10"
 
-    # --- Data split ratios (ASM-001): 80/20 train/test, validation carved from train ---
+    # --- Split ratios for datasets that do not provide their own test set ---
     test_fraction: float = 0.2
     validation_fraction: float = 0.2  # fraction of the post-test training pool
 

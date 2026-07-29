@@ -38,7 +38,7 @@ from stage2_rl_config import (
     TABLE_ROOT,
 )
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 REPORT_NAME = "full_irfs_fixed_budget_penalty"
 ENGINE_NAME = "full_irfs"
 STATE_ENCODER = "fixed"
@@ -96,11 +96,7 @@ def _load_matching(path: Path, signature: dict[str, Any]) -> dict[str, Any] | No
     if artifact.get("experiment_signature") != signature:
         return None
     protocol = artifact.get("protocol", {})
-    if (
-        protocol.get("official_test_accessed") is not False
-        or protocol.get("held_out_random_test_accessed") is not False
-        or protocol.get("outer_test_release_permitted") is not False
-    ):
+    if protocol.get("test_used_during_selection") is not False:
         return None
 
     if len(artifact.get("trajectory", [])) != EXPLORATION_STEP_BUDGET:
@@ -243,9 +239,7 @@ def _run_one(
             ),
             "development_rows": int(context.split.train.X.shape[0]),
             "inner_cv_folds": INNER_CV_FOLDS,
-            "official_test_accessed": False,
-            "held_out_random_test_accessed": False,
-            "outer_test_release_permitted": False,
+            "test_used_during_selection": False,
             "selected_subset_rule": (
                 "maximum mean DT inner-CV accuracy among initial and trajectory candidates "
                 f"with |S|<={BUDGET_SWEEP_FEATURE_BUDGET}; ties use fewer features"
@@ -358,7 +352,7 @@ def _selection_aggregate(
 
 
 def run_selection() -> None:
-    """Finish every lambda/seed RL selection while outer test remains sealed."""
+    """Finish every lambda/seed RL selection on source train data."""
     base_config = _config_for_lambda(BUDGET_SWEEP_VALUES[0])
     first_context = build_stage2_cv_context(
         base_config,
@@ -377,7 +371,7 @@ def run_selection() -> None:
     print(
         f"budget sweep selection: beta={BUDGET_SWEEP_BETA:g} "
         f"lambdas={list(BUDGET_SWEEP_VALUES)} seeds={list(BUDGET_SWEEP_SEEDS)} "
-        f"k={BUDGET_SWEEP_FEATURE_BUDGET}; outer test sealed",
+        f"k={BUDGET_SWEEP_FEATURE_BUDGET}; source test unused during selection",
         flush=True,
     )
     artifacts: list[dict[str, Any]] = []
@@ -443,12 +437,8 @@ def _load_complete_selection(seed: int, value: float) -> dict[str, Any]:
     if artifact.get("experiment_signature") != _selection_signature(seed, value):
         raise ValueError(f"selection signature mismatch: {path}")
     protocol = artifact.get("protocol", {})
-    if (
-        protocol.get("official_test_accessed") is not False
-        or protocol.get("held_out_random_test_accessed") is not False
-        or protocol.get("outer_test_release_permitted") is not False
-    ):
-        raise ValueError(f"selection did not keep outer test sealed: {path}")
+    if protocol.get("test_used_during_selection") is not False:
+        raise ValueError(f"selection used test data: {path}")
     if len(artifact.get("trajectory", [])) != EXPLORATION_STEP_BUDGET:
         raise ValueError(f"incomplete selection trajectory: {path}")
     if not artifact.get("selected_clean_indices"):
@@ -464,7 +454,7 @@ def _load_complete_selection(seed: int, value: float) -> dict[str, Any]:
 
 
 def _require_complete_sweep() -> dict[tuple[int, float], dict[str, Any]]:
-    """Validate all lambda/seed artifacts before any outer test can be released."""
+    """Validate all lambda/seed selection artifacts before test evaluation."""
     complete: dict[tuple[int, float], dict[str, Any]] = {}
     errors: list[str] = []
     for seed in BUDGET_SWEEP_SEEDS:
@@ -501,7 +491,7 @@ def _run_seed_dt(
             raise ValueError(f"development rows differ for seed={seed}, lambda={value:g}")
         selections[float(value)] = artifact
 
-    test = context.split.release_test_for_final_metrics()
+    test = context.split.test
     ranked, mi_scores = _mi_ranking(development.X, development.y, seed)
     final_probe = DecisionTreeProbe(development, config, context.rng)
     candidates: list[tuple[str, tuple[int, ...], str, float | None, float | None]] = [
@@ -526,7 +516,7 @@ def _run_seed_dt(
             (
                 f"{lambda_tag(value)}_selected",
                 tuple(int(index) for index in artifact["selected_clean_indices"]),
-                "unchanged feasible selection from sealed budget-penalty sweep",
+                "unchanged feasible selection from the budget-penalty sweep",
                 float(value),
                 float(artifact["best_feasible_dt_inner_cv_accuracy"]),
             )
@@ -567,7 +557,7 @@ def _run_seed_dt(
     result = {
         "protocol": {
             "stage": "stage2_budget_penalty_dt_final_test",
-            "all_sweep_selections_completed_before_any_test_release": True,
+            "all_sweep_selections_completed_before_test_evaluation": True,
             "rl_retrained": False,
             "rl_selected_features_modified": False,
             "test_role": "final_evaluation_only",
@@ -587,7 +577,7 @@ def _run_seed_dt(
         "dataset_metadata": metadata,
         "split_indices": {
             "development_train_plus_validation": development.indices.astype(int).tolist(),
-            "held_out_test": test.indices.astype(int).tolist(),
+            "source_test": test.indices.astype(int).tolist(),
         },
         "mutual_information_scores": {
             str(original_ids[index]): float(mi_scores[index]) for index in range(context.n_features)
@@ -670,7 +660,7 @@ def _dt_aggregate(
             "selection_root": str(BUDGET_SWEEP_SELECTION_ROOT),
             "protocol": (
                 "all budget-penalty selections finish on inner-CV DT before final DT "
-                "fits development and evaluates outer test"
+                "fits source train and evaluates source test"
             ),
             "methods": summaries,
         },
@@ -679,7 +669,7 @@ def _dt_aggregate(
 
 
 def run_dt_test() -> None:
-    """Preflight the full sweep, then release each seed's outer test once."""
+    """Validate the full sweep, then evaluate each seed on source test."""
     complete = _require_complete_sweep()
     print(
         f"validated all {len(complete)} budget-sweep selections; outer DT test permitted",

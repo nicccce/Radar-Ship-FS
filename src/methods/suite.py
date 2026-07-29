@@ -14,9 +14,8 @@ therefore be built BEFORE the comparison runs (the snapshot is captured at const
 orchestrator advances the shared RNG once selectors start).
 
 Validation surface only (REQ-010 / RISK-002): every method is scored on ``split.validation`` through
-the shared probe by the orchestrator; the test partition stays gated behind
-``Split.release_test_for_final_metrics`` and is released exactly once, later, by TASK-503. No method
-internal is touched — each is consumed as-is through the common subset contract (COMPAT-001). This
+the shared probe by the orchestrator; final test scoring happens later. No method internal is touched
+— each is consumed as-is through the common subset contract (COMPAT-001). This
 module deliberately owns the concrete-method imports the import-light :mod:`harness.comparison`
 must not carry.
 
@@ -93,7 +92,7 @@ def run_full_comparison(
     snapshot) and drives :func:`run_comparison` once, returning the :class:`ComparisonResult`
     carrying every included method's subset/size, the reinforced per-step series, and windowed
     Best/Average for included reinforced methods (``compare`` adds a windowed entry for each series-
-    bearing run). Validation surface only — the test partition is never released here.
+    bearing run). Validation surface only — test is not used here.
 
     ``on_method`` (per-selector start/done) and ``on_step`` (reinforced per-step) are optional,
     observational progress hooks for the long-running selectors; default ``None`` -> silent and bit-

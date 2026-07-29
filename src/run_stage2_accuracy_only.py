@@ -12,7 +12,7 @@ from stage2_rl_config import (
 
 
 def configure_accuracy_only() -> None:
-    """Configure the reusable sealed sweep for beta=0 and lambda=0."""
+    """Configure the reusable sweep for beta=0 and lambda=0."""
     sweep.REPORT_NAME = "full_irfs_fixed_accuracy_only"
     sweep.BUDGET_SWEEP_BETA = 0.0
     sweep.BUDGET_SWEEP_VALUES = (0.0,)

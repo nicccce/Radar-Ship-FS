@@ -14,7 +14,7 @@ and drive the windowed Best/Average metrics over its per-step series, and the ar
 (TASK-204) can serialize these results — without reshaping the classical path.
 
 Leakage (REQ-010 / RISK-002): subsets are scored on ``context.split.validation``; the test partition
-is reserved for final reported metrics only and is never released on this path. The validation-vs-
+is reserved for final reported metrics and is not used on this path. The validation-vs-
 test scoring deviation is recorded in RISK-002; surfacing held-out test accuracy is deferred to
 PHASE-005.
 
@@ -91,7 +91,7 @@ class MethodOrchestrator:
 
         For each ``(name, selector)``: call ``selector.select(context)`` to produce a subset through
         the common contract, score that subset with the shared probe on the validation partition,
-        and collect a :class:`MethodRun`. The test partition is never released on this path.
+        and collect a :class:`MethodRun`. Test data is not used on this path.
 
         ``on_method``, when supplied, is an optional observational progress hook called
         ``on_method(name, "start")`` just before a selector runs and ``on_method(name, "done")``

@@ -20,8 +20,7 @@ reward ignores ``agent`` and so returns one value for all (the provisional behav
 reward (TASK-405) returns each agent its own signal — both through the one unchanged seam signature.
 
 Leakage invariant (REQ-010 / AC-007): every per-step decision is scored on
-``context.split.validation`` only; the test partition has no public attribute and
-``release_test_for_final_metrics`` is never called, so no in-run decision can read held-out data.
+``context.split.validation`` only; test is not used by the exploration loop.
 Determinism (CON-003): the initial subset, the agents' weight initialization, ε-greedy action
 selection, and experience sampling all draw from the single shared RNG, so a seed reproduces the
 subset and the series.
@@ -93,11 +92,9 @@ class ReinforcedEngine:
         return [self._encoder.encode(agent.feature, subset, context) for agent in agents]
 
     def _score(self, context: "SelectionContext", subset: tuple[int, ...]) -> float:
-        """Validation accuracy of ``subset`` from the shared probe — the leakage-safe scoring path.
+        """Validation accuracy of ``subset`` from the shared probe.
 
-        Leakage tripwire (REQ-010 / AC-007): the only partition passed to the probe is
-        ``context.split.validation``; the test partition is never referenced and
-        ``release_test_for_final_metrics`` is never called.
+        The only partition passed to the probe here is ``context.split.validation``.
         """
         validation = context.split.validation
         return float(context.probe.probe(subset, validation).accuracy)

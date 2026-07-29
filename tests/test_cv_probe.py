@@ -55,7 +55,7 @@ def test_cross_validated_probe_reports_fixed_fold_scores_and_rejects_test() -> N
         probe.probe((0, 1), test)
 
 
-def test_inner_cv_split_view_keeps_test_private() -> None:
+def test_inner_cv_split_view_keeps_source_test() -> None:
     development = _partition()
     test = development._replace(indices=np.arange(100, 150))
     ordinary = Split(development, development, test)
@@ -64,8 +64,7 @@ def test_inner_cv_split_view_keeps_test_private() -> None:
 
     assert inner.train is development
     assert inner.validation is development
-    with pytest.raises(AttributeError):
-        _ = inner.test
+    assert inner.test is test
 
 
 def test_equal_accuracy_prefers_fewer_features() -> None:

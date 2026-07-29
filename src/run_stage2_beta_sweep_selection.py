@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan beta for one configured Full-IRFS variant without touching the sealed outer test."""
+"""Scan beta on source train data for one configured Full-IRFS variant."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from stage2_rl_config import (
     TRAJECTORY_ROLLING_WINDOW,
 )
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 REPORT_NAME = "full_irfs_fixed"
 ENGINE_NAME = "full_irfs"
 STATE_ENCODER = "fixed"
@@ -203,9 +203,7 @@ def _run_one(
             "reward_beta": float(beta),
             "development_rows": int(context.split.train.X.shape[0]),
             "inner_cv_folds": INNER_CV_FOLDS,
-            "official_test_accessed": False,
-            "held_out_random_test_accessed": False,
-            "outer_test_release_permitted": False,
+            "test_used_during_selection": False,
             "selected_subset_rule": "maximum mean DT inner-CV accuracy; ties use fewer features",
         },
         "dataset_metadata": context.split.train.metadata,
@@ -350,7 +348,7 @@ def main() -> None:
     print(
         f"beta sweep selection: method={REPORT_NAME} "
         f"betas={list(BETA_SWEEP_VALUES)} seeds={list(BETA_SWEEP_SEEDS)} "
-        f"budget={EXPLORATION_STEP_BUDGET}; outer test sealed",
+        f"budget={EXPLORATION_STEP_BUDGET}; source test unused during selection",
         flush=True,
     )
     artifacts: list[dict[str, Any]] = []

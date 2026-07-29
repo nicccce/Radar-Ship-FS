@@ -51,13 +51,13 @@ def test_resume_signature_is_stable_across_json_round_trip() -> None:
     )
 
     assert json.loads(json.dumps(signature)) == signature
-    assert signature["protocol_version"] == 2
+    assert signature["protocol_version"] == 3
     assert signature["inner_cv_folds"] == 5
     assert signature["effective_irfs_config"]["hybrid_switch_step"] == 83
     assert signature["effective_irfs_config"]["hybrid_withdraw_step"] == 166
 
 
-def test_final_lr_combines_train_and_validation_before_random_test() -> None:
+def test_final_lr_combines_train_and_validation_before_source_test() -> None:
     X = np.arange(60, dtype=np.float32).reshape(12, 5)
     y = np.asarray([-1, 1] * 6)
     names = [f"feature_{index}" for index in range(5)]
@@ -94,8 +94,7 @@ def test_final_lr_loader_requires_isolated_selection(tmp_path, monkeypatch) -> N
                     "report_name": "marlfs",
                 },
                 "protocol": {
-                    "official_test_accessed": False,
-                    "held_out_random_test_accessed": False,
+                    "test_used_during_selection": False,
                     "lr_final_called": False,
                 },
                 "selected_clean_indices": [0, 2],

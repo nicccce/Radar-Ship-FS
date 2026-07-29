@@ -10,8 +10,7 @@ no-trainer reinforced engine (TASK-210) run on equal footing and the PHASE-003 c
 contract change.
 
 Leakage invariant (REQ-010 / DEC-005): a selector scores candidate subsets only on
-``context.split.validation``; the test partition stays gated behind
-``Split.release_test_for_final_metrics`` and is never reached during selection.
+``context.split.validation``; test is used later for final metrics.
 
 This contract is distinct from the engine's internal state/reward seam (TASK-205): the engine
 *satisfies* this subset contract at its boundary (TASK-210) while consuming its state and reward

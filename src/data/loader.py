@@ -29,11 +29,9 @@ from config import IrfsConfig
 class LoadedDataset(NamedTuple):
     """Result of loading a dataset.
 
-    Field order ``(X, y, feature_names, n_features, n_classes, groups)``. Callers use attribute
-    access (not positional unpacking), so the trailing optional ``groups`` is additive. ``groups``
-    is a per-row grouping vector (e.g. subject ids) for datasets that define one, enabling group-
-    aware splitting (REQ-022); it is ``None`` for datasets without grouping (the sklearn-bunch
-    datasets).
+    ``groups`` is a per-row grouping vector for datasets such as Parkinson's. ``test_indices``
+    identifies rows supplied by the dataset as its test set; it is ``None`` when the dataset has
+    no predefined split.
     """
 
     X: np.ndarray
@@ -42,7 +40,7 @@ class LoadedDataset(NamedTuple):
     n_features: int
     n_classes: int
     groups: Optional[np.ndarray] = None
-    predefined_test_indices: Optional[np.ndarray] = None
+    test_indices: Optional[np.ndarray] = None
     metadata: Optional[dict] = None
 
 
@@ -134,18 +132,16 @@ def _load_radar_ship(
     data_dir: str,
     version: str,
 ) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
-    """Load and leakage-safely clean the supplied radar-ship SVM-light train/test files.
+    """Load and clean the supplied radar-ship SVM-light train/test files.
 
     Constant and exact-duplicate columns are identified on the first supplied file only, preserving
-    the version-specific candidate pool. The same column mask is applied to the second file, then
-    all rows are concatenated. Row splitting happens later over the combined rows through the
-    ordinary stratified-random splitter. Only the source filenames vary by version; preprocessing
-    is shared unchanged.
+    the version-specific candidate pool. The same column mask is applied to the test file and the
+    rows are concatenated; the loader records where the test rows begin.
     """
     from sklearn.datasets import load_svmlight_file
 
     if not version or any(
-        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
         for character in version
     ):
         raise ValueError(f"invalid radar_ship_version: {version!r}")
@@ -235,7 +231,7 @@ def load(config: IrfsConfig) -> LoadedDataset:
     available = (*_LOADERS, "radar_ship")
     if name not in available:
         raise ValueError(f"Unknown dataset {name!r}; available: {sorted(available)}")
-    predefined_test_indices = None
+    test_indices = None
     metadata = None
     if name == "radar_ship":
         X, y, feature_names, metadata = _load_radar_ship(
@@ -243,13 +239,14 @@ def load(config: IrfsConfig) -> LoadedDataset:
             config.radar_ship_version,
         )
         groups = None
+        test_start = int(metadata["source_train_rows"])
+        test_indices = np.arange(test_start, X.shape[0], dtype=int)
         metadata = {
             **metadata,
-            "row_split_protocol": "combine_source_files_then_stratified_random_split",
-            "source_file_row_boundary_used": False,
+            "row_split_protocol": "source_train_for_development_source_test_for_evaluation",
+            "source_file_row_boundary_used": True,
             "candidate_feature_pool_note": (
-                "the source-train-fitted feature mask is shared by every method; both files are "
-                "combined before train/validation/test row splitting"
+                "the feature mask is fitted on the source train file and applied unchanged to test"
             ),
         }
     else:
@@ -263,6 +260,6 @@ def load(config: IrfsConfig) -> LoadedDataset:
         n_features=n_features,
         n_classes=n_classes,
         groups=groups,
-        predefined_test_indices=predefined_test_indices,
+        test_indices=test_indices,
         metadata=metadata,
     )

@@ -13,7 +13,7 @@ Leakage-safe (REQ-010 / DEC-005): the per-iteration importances come from the pr
 fit on ``context.split.train``; elimination decisions never read validation or test. The probe call
 passes ``context.split.validation`` as the (unused) scoring partition to stay on the contract's
 leakage-safe scoring partition and to warm the probe cache for the orchestrator's final scoring of
-the same subset — the test partition is never released here.
+the same subset — test data is not used here.
 
 Determinism (REQ-021 / AC-005): the probe's ``random_state`` is fixed for the run, so its
 importances are deterministic; ties at the minimum importance are broken by lowest feature index, so

@@ -25,7 +25,7 @@ leaves this adapter stateless.
 
 **Leakage safety (REQ-013 / AC-007).** Every bound signal is computed only on non-test partitions: the
 state on ``split.train``, the reward's accuracy on ``split.validation`` and its correlation on
-``split.train``, importances from the train-fit probe. The engine never releases the test partition.
+``split.train``, importances from the train-fit probe. The engine does not use test data.
 """
 
 from __future__ import annotations

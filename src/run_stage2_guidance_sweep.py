@@ -138,7 +138,7 @@ def _combine_results() -> dict[str, Any]:
         "beta": GUIDANCE_SWEEP_BETA,
         "seeds": list(BETA_SWEEP_SEEDS),
         "budget": EXPLORATION_STEP_BUDGET,
-        "all_schedule_selections_completed_before_any_test_release": True,
+        "all_schedule_selections_completed_before_test_evaluation": True,
         "kbest_mutual_info": kbest_summary,
         "schedule_summaries": schedule_summaries,
     }
@@ -161,11 +161,11 @@ def main() -> None:
     print(
         f"guidance sweep: beta={GUIDANCE_SWEEP_BETA:g} "
         f"schedules={[spec[0] for spec in GUIDANCE_SCHEDULE_SPECS]} "
-        f"seeds={list(BETA_SWEEP_SEEDS)}; outer test sealed",
+        f"seeds={list(BETA_SWEEP_SEEDS)}; source test unused during selection",
         flush=True,
     )
 
-    # Phase 1: finish every schedule/seed selection while the outer test remains sealed.
+    # Phase 1: finish every schedule/seed selection on source train data.
     for spec in GUIDANCE_SCHEDULE_SPECS:
         name = spec[0]
         relevance_steps, dt_steps, withdrawn_steps = _phase_lengths(spec)
@@ -176,7 +176,7 @@ def main() -> None:
         _configure_schedule(spec)
         selection.main()
 
-    # Phase 2 preflight: validate all 4 x 4 artifacts before the first outer-test release.
+    # Phase 2: validate all 4 x 4 artifacts before test evaluation.
     complete_count = 0
     for spec in GUIDANCE_SCHEDULE_SPECS:
         _configure_schedule(spec)

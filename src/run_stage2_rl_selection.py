@@ -28,6 +28,7 @@ from methods.reinforced_run import (
 )
 from stage2_cv import build_stage2_cv_context
 from stage2_rl_config import (
+    ACTIVE_RL_METHOD_SPECS,
     DATA_DIR,
     DATA_VERSION,
     DATASET,
@@ -37,17 +38,15 @@ from stage2_rl_config import (
     HYBRID_WITHDRAW_STEP,
     INNER_CV_FOLDS,
     RESUME_COMPLETED_SELECTIONS,
-    RL_METHOD_SPECS,
     SEEDS,
     SELECTION_ROOT,
     TABLE_PREFIX,
     TABLE_ROOT,
-    TEST_FRACTION,
     TRAJECTORY_ROLLING_WINDOW,
     VALIDATION_FRACTION,
 )
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 def _write_json(payload: dict[str, Any], path: Path) -> None:
@@ -98,7 +97,6 @@ def _config_for_encoder(state_encoder: str) -> IrfsConfig:
             "data_dir": DATA_DIR,
             "radar_ship_version": DATA_VERSION,
             "seeds": SEEDS,
-            "test_fraction": TEST_FRACTION,
             "validation_fraction": VALIDATION_FRACTION,
             "exploration_step_budget": EXPLORATION_STEP_BUDGET,
             "hybrid_switch_step": HYBRID_SWITCH_STEP,
@@ -340,9 +338,8 @@ def _run_method(
             "development_rows": int(context.split.train.X.shape[0]),
             "inner_cv_folds": INNER_CV_FOLDS,
             "separate_reward_validation_rows": 0,
-            "official_test_accessed": False,
-            "held_out_random_test_accessed": False,
-            "row_split": "merge source files; outer stratified 80/20; inner stratified 5-fold CV",
+            "test_used_during_selection": False,
+            "row_split": "source train for development; source test for final evaluation",
             "lr_final_called": False,
             "selected_subset_rule": "maximum mean DT inner-CV accuracy; ties use fewer features",
         },
@@ -376,7 +373,7 @@ def _run_method(
 
 def _aggregate(artifacts: Sequence[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     by_method: dict[str, list[dict[str, Any]]] = {
-        report_name: [] for report_name, _engine_name, _state_encoder in RL_METHOD_SPECS
+        report_name: [] for report_name, _engine_name, _state_encoder in ACTIVE_RL_METHOD_SPECS
     }
     per_seed_rows: list[dict[str, Any]] = []
     for artifact in artifacts:
@@ -438,7 +435,7 @@ def _aggregate(artifacts: Sequence[dict[str, Any]]) -> tuple[dict[str, Any], lis
 def _aggregate_trajectories(artifacts: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """按 method/step 聚合五种子轨迹，直接供均值带/标准差带绘图。"""
     rows: list[dict[str, Any]] = []
-    for method, _engine_name, _state_encoder in RL_METHOD_SPECS:
+    for method, _engine_name, _state_encoder in ACTIVE_RL_METHOD_SPECS:
         selected = [item for item in artifacts if item["experiment_signature"]["report_name"] == method]
         for step in range(1, EXPLORATION_STEP_BUDGET + 1):
             points = [item["trajectory"][step - 1] for item in selected]
@@ -495,7 +492,7 @@ def _aggregate_csv_rows(aggregate: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    # 只构造一次 split/probe；三种方法恢复同一 RNG 快照并共享同一个确定性 DT 缓存。
+    # 只构造一次 split/probe；各方法恢复同一 RNG 快照并共享同一个确定性 DT 缓存。
     base_config = _config_for_encoder("fixed")
     first_context = build_stage2_cv_context(base_config, seed=SEEDS[0], n_splits=INNER_CV_FOLDS)
     if first_context.n_features != EXPECTED_CLEAN_FEATURES:
@@ -512,7 +509,7 @@ def main() -> None:
         flush=True,
     )
     print(
-        "selection-only protocol: 80% development, stratified 5-fold DT reward; outer test sealed",
+        "selection protocol: source train with stratified 5-fold DT reward; source test unused",
         flush=True,
     )
 
@@ -524,7 +521,7 @@ def main() -> None:
             else build_stage2_cv_context(base_config, seed=seed, n_splits=INNER_CV_FOLDS)
         )
         snapshot = _rng_snapshot(context.rng)
-        for report_name, engine_name, state_encoder in RL_METHOD_SPECS:
+        for report_name, engine_name, state_encoder in ACTIVE_RL_METHOD_SPECS:
             artifacts.append(
                 _run_method(
                     context,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Evaluate baselines and all three RL-selected feature sets on each outer test split.
+"""Evaluate baselines and the configured RL-selected feature sets on source test.
 
 This entry never reruns RL. It reads the inner-CV selections, fits fresh Decision Trees on all
-development rows, and evaluates them once on the sealed test rows.
+development rows, and evaluates them on the source test rows.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from run_stage2_rl_selection import (
     _write_json,
 )
 from stage2_rl_config import (
+    ACTIVE_RL_METHOD_SPECS,
     DATASET,
     DT_TEST_ROOT,
     EXPECTED_CLEAN_FEATURES,
@@ -56,10 +57,7 @@ def _load_rl_selection(
         or signature.get("report_name") != method
     ):
         raise ValueError(f"RL selection identity mismatch in {path}")
-    if (
-        protocol.get("official_test_accessed") is not False
-        or protocol.get("held_out_random_test_accessed") is not False
-    ):
+    if protocol.get("test_used_during_selection") is not False:
         raise ValueError(f"RL selection accessed test during search: {path}")
 
     saved_split = artifact.get("split_indices", {})
@@ -117,9 +115,9 @@ def _run_seed(seed: int) -> dict[str, Any]:
     original_ids = [int(value) for value in metadata["final_feature_ids"]]
 
     development = _development_partition(context)
+    active_methods = tuple(spec[0] for spec in ACTIVE_RL_METHOD_SPECS)
     rl_selections = {
-        method: _load_rl_selection(seed, method, development.indices)
-        for method in ("marlfs", "full_irfs_fixed", "full_irfs_trained_gcn")
+        method: _load_rl_selection(seed, method, development.indices) for method in active_methods
     }
     rl_features = {
         method: tuple(int(index) for index in artifact["selected_clean_indices"])
@@ -127,7 +125,7 @@ def _run_seed(seed: int) -> dict[str, Any]:
     }
     fixed_features = rl_features["full_irfs_fixed"]
 
-    test = context.split.release_test_for_final_metrics()
+    test = context.split.test
     ranked, mi_scores = _mi_ranking(development.X, development.y, seed)
     final_probe = DecisionTreeProbe(development, config, context.rng)
 
@@ -155,12 +153,6 @@ def _run_seed(seed: int) -> dict[str, Any]:
             rl_features["full_irfs_fixed"],
             "features read unchanged from the inner-CV Full-IRFS-fixed selection",
             rl_selections["full_irfs_fixed"]["best_dt_inner_cv_accuracy"],
-        ),
-        (
-            "full_irfs_trained_gcn_selected",
-            rl_features["full_irfs_trained_gcn"],
-            "features read unchanged from the inner-CV Full-IRFS-trained-GCN selection",
-            rl_selections["full_irfs_trained_gcn"]["best_dt_inner_cv_accuracy"],
         ),
         (
             "kbest_mutual_info_matched_fixed_size",
@@ -206,9 +198,9 @@ def _run_seed(seed: int) -> dict[str, Any]:
             "rl_retrained": False,
             "rl_selected_features_modified": False,
             "development_fit_rows": int(development.X.shape[0]),
-            "held_out_random_test_rows": int(test.X.shape[0]),
+            "source_test_rows": int(test.X.shape[0]),
             "test_role": "final_evaluation_only",
-            "row_split": "merge source files; outer stratified 80/20; RL uses inner 5-fold CV",
+            "row_split": "source train for development; source test for final evaluation",
             "final_model": "DecisionTreeClassifier through DecisionTreeProbe",
             "lr_final_called": False,
             "selection_sources": {
@@ -221,13 +213,12 @@ def _run_seed(seed: int) -> dict[str, Any]:
             "inner_cv_folds": INNER_CV_FOLDS,
             "kbest_k": K_BEST,
             "matched_k": len(fixed_features),
-            "test_fraction": config.test_fraction,
             "validation_fraction": config.validation_fraction,
         },
         "dataset_metadata": metadata,
         "split_indices": {
             "development_train_plus_validation": development.indices.astype(int).tolist(),
-            "held_out_test": test.indices.astype(int).tolist(),
+            "source_test": test.indices.astype(int).tolist(),
         },
         "mutual_information_scores": {
             str(original_ids[index]): float(mi_scores[index]) for index in range(context.n_features)
@@ -304,7 +295,9 @@ def _aggregate(
     aggregate = {
         "dataset": DATASET,
         "seeds": list(SEEDS),
-        "protocol": ("RL selects by 5-fold inner-CV DT; final DT fits development and evaluates outer test"),
+        "protocol": (
+            "RL selects by 5-fold inner-CV DT; final DT fits source train and evaluates source test"
+        ),
         "methods": method_summaries,
     }
     return aggregate, flat_rows
@@ -335,7 +328,7 @@ def _aggregate_csv_rows(aggregate: dict[str, Any]) -> list[dict[str, Any]]:
 def main() -> None:
     print(
         f"held-out DT test: seeds={list(SEEDS)} kbest={K_BEST}; "
-        "fit all development rows; evaluate outer test; RL not rerun; LR absent",
+        "fit all source train rows; evaluate source test; RL not rerun; LR absent",
         flush=True,
     )
     seed_results = [_run_seed(seed) for seed in SEEDS]

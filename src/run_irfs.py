@@ -152,8 +152,8 @@ def _full_comparison(orchestrator, *, diagnostic_ablations: bool = False) -> Non
     """Full comparison & held-out validation: the epic's headline run.
 
     Runs the classical baselines and selected reinforced methods through the one shared context in a
-    single unified pass, releases the gated test partition exactly once to score each final subset
-    on test, then emits the complete reproducible artifact (selection + test) under
+    single unified pass, scores each final subset on test, then emits the complete reproducible
+    artifact (selection + test) under
     ``experiments/<dataset>/seed-<n>/``. Reinforced numbers are the unified-run state — the
     canonical headline — on the same shared context the interactive-feedback stage already
     snapshotted, so they agree. Prints the Best/Average headline plus the val/test summary. The
@@ -178,7 +178,7 @@ def _full_comparison(orchestrator, *, diagnostic_ablations: bool = False) -> Non
         on_method=_method_logger(),
         on_step=_on_step,
     )
-    # 2. Release the gated test partition exactly once and score each final subset on test.
+    # 2. Score each final subset on test.
     final = score_final_metrics(ctx, comparison)
     test_by_name = {m.name: m.test for m in final.per_method}
 
@@ -244,7 +244,7 @@ def _run_seed(config, seed: int, *, diagnostic_ablations: bool = False) -> None:
     # is scored on this same split + probe.
     orchestrator = MethodOrchestrator(config, seed=seed)
     ctx = orchestrator.context
-    print(f"   shared context: n_features={ctx.n_features}  (test partition gated)")
+    print(f"   shared context: n_features={ctx.n_features}")
 
     _classical_baselines(orchestrator, ctx, diagnostic_ablations=diagnostic_ablations)
 

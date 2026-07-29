@@ -58,12 +58,8 @@ def _load_complete_selection(seed: int, beta: float) -> dict[str, Any]:
     if artifact.get("experiment_signature") != _selection_signature(seed, beta):
         raise ValueError(f"selection signature mismatch: {path}")
     protocol = artifact.get("protocol", {})
-    if (
-        protocol.get("official_test_accessed") is not False
-        or protocol.get("held_out_random_test_accessed") is not False
-        or protocol.get("outer_test_release_permitted") is not False
-    ):
-        raise ValueError(f"selection did not keep outer test sealed: {path}")
+    if protocol.get("test_used_during_selection") is not False:
+        raise ValueError(f"selection used test data: {path}")
     if len(artifact.get("trajectory", [])) != EXPLORATION_STEP_BUDGET:
         raise ValueError(f"incomplete selection trajectory: {path}")
     if not artifact.get("selected_clean_indices"):
@@ -72,7 +68,7 @@ def _load_complete_selection(seed: int, beta: float) -> dict[str, Any]:
 
 
 def _require_complete_sweep() -> dict[tuple[int, float], dict[str, Any]]:
-    """Validate all 16 artifacts before any outer test can be released."""
+    """Validate all 16 selection artifacts before test evaluation."""
     complete: dict[tuple[int, float], dict[str, Any]] = {}
     errors: list[str] = []
     for seed in BETA_SWEEP_SEEDS:
@@ -109,8 +105,8 @@ def _run_seed(
             raise ValueError(f"development rows differ for seed={seed}, beta={beta:g}")
         selections[float(beta)] = artifact
 
-    # The release happens only after every sweep artifact and this seed's split are verified.
-    test = context.split.release_test_for_final_metrics()
+    # Evaluate test only after every sweep artifact and this seed's split are verified.
+    test = context.split.test
     ranked, mi_scores = _mi_ranking(development.X, development.y, seed)
     final_probe = DecisionTreeProbe(development, config, context.rng)
 
@@ -136,7 +132,7 @@ def _run_seed(
             (
                 f"{beta_tag(beta)}_selected",
                 tuple(int(index) for index in artifact["selected_clean_indices"]),
-                "features read unchanged from the configured sealed Full-IRFS beta sweep",
+                "features read unchanged from the configured Full-IRFS beta sweep",
                 float(beta),
                 float(artifact["best_dt_inner_cv_accuracy"]),
             )
@@ -176,11 +172,11 @@ def _run_seed(
     result = {
         "protocol": {
             "stage": "stage2_beta_sweep_dt_final_test",
-            "all_sweep_selections_completed_before_any_test_release": True,
+            "all_sweep_selections_completed_before_test_evaluation": True,
             "rl_retrained": False,
             "rl_selected_features_modified": False,
             "development_fit_rows": int(development.X.shape[0]),
-            "held_out_random_test_rows": int(test.X.shape[0]),
+            "source_test_rows": int(test.X.shape[0]),
             "test_role": "final_evaluation_only",
             "final_model": "DecisionTreeClassifier through DecisionTreeProbe",
             "selection_sources": {
@@ -192,13 +188,12 @@ def _run_seed(
             "inner_cv_folds": INNER_CV_FOLDS,
             "kbest_k": K_BEST,
             "betas": [float(beta) for beta in BETA_SWEEP_VALUES],
-            "test_fraction": config.test_fraction,
             "validation_fraction": config.validation_fraction,
         },
         "dataset_metadata": metadata,
         "split_indices": {
             "development_train_plus_validation": development.indices.astype(int).tolist(),
-            "held_out_test": test.indices.astype(int).tolist(),
+            "source_test": test.indices.astype(int).tolist(),
         },
         "mutual_information_scores": {
             str(original_ids[index]): float(mi_scores[index]) for index in range(context.n_features)
@@ -279,7 +274,7 @@ def _aggregate(
         "selection_root": str(BETA_SWEEP_SELECTION_ROOT),
         "protocol": (
             "all beta selections finish on inner-CV DT before final DT fits "
-            "development and evaluates the outer test"
+            "source train and evaluates source test"
         ),
         "methods": summaries,
     }

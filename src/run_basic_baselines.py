@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Run All Features and MI-KBest after merging and freshly splitting both source files.
+"""Run All Features and MI-KBest on the supplied train/test files.
 
-Experiment settings are code-only in ``stage2_rl_config.py``. For every seed, this entry recreates
-the same stratified outer 80/20 split as stage-2 RL. It recombines the two development pieces because
-these baselines do not need reward validation, fits selection/LR on all development rows, and
-evaluates once on the new random 20% test partition.
+Feature selection and LR use all source train rows. Metrics are evaluated on source test rows.
 """
 
 from __future__ import annotations
@@ -106,14 +103,14 @@ def _run_seed(seed: int) -> dict[str, Any]:
             flush=True,
         )
 
-    test = context.split.release_test_for_final_metrics()
+    test = context.split.test
     result = {
         "protocol": {
-            "row_split": "merge source files, then outer stratified random 80/20 per seed",
+            "row_split": "source train for fitting; source test for evaluation",
             "validation_used": False,
             "selection_fit_rows": int(X_development.shape[0]),
             "final_lr_fit_rows": int(X_development.shape[0]),
-            "held_out_test_rows": int(X_test.shape[0]),
+            "source_test_rows": int(X_test.shape[0]),
             "test_role": "final_evaluation_only",
             "kbest_k_fixed_before_test": K_BEST,
         },
@@ -132,7 +129,7 @@ def _run_seed(seed: int) -> dict[str, Any]:
                 context.split.train.indices.astype(int).tolist()
                 + context.split.validation.indices.astype(int).tolist()
             ),
-            "held_out_test": test.indices.astype(int).tolist(),
+            "source_test": test.indices.astype(int).tolist(),
         },
         "methods": methods,
     }
@@ -143,7 +140,7 @@ def _run_seed(seed: int) -> dict[str, Any]:
 def main() -> None:
     print(
         f"dataset={DATASET} seeds={list(SEEDS)}; no validation baseline: train+validation -> fit, "
-        "new random test -> final metrics",
+        "source test -> final metrics",
         flush=True,
     )
     seed_results = [_run_seed(seed) for seed in SEEDS]
@@ -151,9 +148,9 @@ def main() -> None:
     aggregate.update(
         {
             "dataset": DATASET,
-            "row_split": "merge source files, then outer stratified random 80/20 per seed",
+            "row_split": "source train for fitting; source test for evaluation",
             "selection_and_final_fit_rows": seed_results[0]["protocol"]["selection_fit_rows"],
-            "held_out_test_rows": seed_results[0]["protocol"]["held_out_test_rows"],
+            "source_test_rows": seed_results[0]["protocol"]["source_test_rows"],
         }
     )
     _write_json(aggregate, BASIC_ROOT / "aggregate.json")

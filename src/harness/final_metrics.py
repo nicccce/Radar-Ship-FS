@@ -1,23 +1,8 @@
-"""Held-out test release + dual val/test metrics (COMP-022, held-out portion) — TASK-503.
+"""Final validation/test metrics.
 
-The single, auditable place the gated test partition is touched. After a run has produced every
-method's final subset on the validation surface (TASK-501,
-:func:`methods.suite.run_full_comparison`), this module releases the test partition **exactly once**
-via ``Split.release_test_for_final_metrics`` and scores each method's already-selected subset on it
-through the shared Decision-Tree probe — pairing the validation accuracy that drove selection with
-the honest held-out test accuracy.
-
-Leakage invariant (REQ-002 / DEC-005 / AC-002 / RISK-002): the release is strictly post-selection
-and operates only over subsets that already exist; nothing here re-runs a method or scores during
-selection, so the test partition cannot influence any subset. ``release_test_for_final_metrics`` has
-no other production caller — this is its first and only one (greppable for the AC-002 inspection).
-The probe is fit on ``split.train`` and merely *evaluated* on test, and it memoizes by ``(subset,
-partition)``, so scoring the final subsets on test is cheap and changes nothing about selection.
-
-This module produces the numbers only; embedding them in the persisted artifact is TASK-504, and the
-val-vs-test protocol caveat is already recorded by TASK-502 (``validation-step-protocol``).
-
-Satisfies COMP-022 -> REQ-018 (held-out scoring portion); preserves AC-002 (leakage invariant).
+After selection, score every selected subset on test through the shared Decision-Tree probe and
+pair that result with the validation accuracy already produced during selection. This module
+produces the numbers; artifact persistence is handled elsewhere.
 """
 
 from __future__ import annotations
@@ -37,7 +22,7 @@ class MethodFinalMetrics(NamedTuple):
     it matches the same method's ``size`` in the selection artifact). ``validation`` is taken
     verbatim from the method's :class:`~harness.orchestrator.MethodRun` (the in-run validation
     accuracy, TASK-501) — it is *not* recomputed here. ``test`` is the same final subset scored on
-    the released test partition through the shared probe.
+    the test partition through the shared probe.
     """
 
     name: str
@@ -49,9 +34,8 @@ class MethodFinalMetrics(NamedTuple):
 class FinalMetricsResult(NamedTuple):
     """The held-out scoring outcome for one run: a ``(val, test)`` pair per method + the test size.
 
-    ``per_method`` preserves the comparison's method order. ``test_n_samples`` is the released test
-    partition's sample count, surfaced here because this is the one place test is legitimately
-    touched (so TASK-504 need not release it a second time).
+    ``per_method`` preserves the comparison's method order. ``test_n_samples`` is the test
+    partition's sample count.
     """
 
     per_method: tuple[MethodFinalMetrics, ...]
@@ -59,14 +43,12 @@ class FinalMetricsResult(NamedTuple):
 
 
 def score_final_metrics(context: "SelectionContext", comparison: "ComparisonResult") -> FinalMetricsResult:
-    """Release the test partition once and score every method's final subset on it.
+    """Score every method's final subset on test.
 
-    Strictly post-selection: ``comparison`` already carries each method's final subset and its
-    validation accuracy (TASK-501). This releases the gated test partition a single time and, for each
-    method, scores its existing subset on test through the shared probe — pairing that held-out accuracy
-    with the validation accuracy. No method is re-run and no selection path reaches test (AC-002).
+    ``comparison`` already carries each final subset and its validation accuracy. No selection
+    method is rerun here.
     """
-    test_partition = context.split.release_test_for_final_metrics()  # the one and only release (AC-002)
+    test_partition = context.split.test
     per_method = tuple(
         MethodFinalMetrics(
             name=run.name,

@@ -149,9 +149,7 @@ class _PerturbedValidationSplit:
         self._inner = inner
         self.train = inner.train
         self.validation = inner.validation._replace(X=inner.validation.X + 1000.0)
-
-    def release_test_for_final_metrics(self):
-        return self._inner.release_test_for_final_metrics()
+        self.test = inner.test
 
 
 def test_trainer_advisor_satisfies_seam_and_delegates(context: SelectionContext) -> None:
