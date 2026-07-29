@@ -50,7 +50,7 @@ def test_beta_tag_and_resume_signature_are_stable() -> None:
     assert signature["effective_irfs_config"]["exploration_step_budget"] == 250
 
 
-def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
+def test_dt_aggregate_reports_paired_delta_against_mi_kbest() -> None:
     seed_results = []
     for seed, mi_score, beta_score in ((42, 0.80, 0.85), (43, 0.90, 0.88)):
         common = {
@@ -65,7 +65,7 @@ def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
                 "methods": [
                     {
                         **common,
-                        "name": "kbest_mutual_info_27",
+                        "name": "kbest_mutual_info",
                         "beta": None,
                         "selected_count": 27,
                         "selection_best_dt_inner_cv_accuracy": None,
@@ -86,8 +86,8 @@ def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
     aggregate, flat_rows = _aggregate(seed_results)
     beta = next(item for item in aggregate["methods"] if item["name"] == "beta_0p02_selected")
 
-    assert beta["delta_vs_kbest_mutual_info_27"]["values"] == pytest.approx([0.05, -0.02])
-    assert beta["win_tie_loss_vs_kbest_mutual_info_27"] == {
+    assert beta["delta_vs_kbest_mutual_info"]["values"] == pytest.approx([0.05, -0.02])
+    assert beta["win_tie_loss_vs_kbest_mutual_info"] == {
         "win": 1,
         "tie": 0,
         "loss": 1,

@@ -90,8 +90,8 @@ python src/run_irfs.py --dataset wdbc --seeds 42 --diagnostic-ablations
 
 ## 阶段 2 雷达 RL 正式实验
 
-正式协议先合并两个 SVM-light 文件的 2304 行，再按每个 seed 分层随机划分为 1843 行
-development 和 461 行 test。RL 只在 development 内做固定分层 5 折交叉验证：每个候选特征集
+当前 `stage2_rl_config.py` 选择 v15：先合并两个 SVM-light 文件的 696 行，再按每个 seed 分层随机划分为 556 行
+development 和 140 行 test。RL 只在 development 内做固定分层 5 折交叉验证：每个候选特征集
 训练 5 棵 Decision Tree，并用 5 个留出折准确率均值作为选择分数。test 不参与特征选择。
 
 RL 搜索运行 MARLFS、Full-IRFS-fixed 和 Full-IRFS-trained-GCN。每种方法运行 250 步，
@@ -103,7 +103,7 @@ conda run --no-capture-output -n dl-lab python src/run_stage2_rl_selection.py
 ```
 
 RL 完成并保存特征编号后，独立入口用全部 development 训练最终 Decision Tree，并在 test 上评价
-All Features、KBest-27、三种 RL 前面筛选出的特征，以及与 Full-IRFS-fixed 同规模的 KBest：
+All Features、KBest-33、三种 RL 前面筛选出的特征，以及与 Full-IRFS-fixed 同规模的 KBest：
 
 ```bash
 conda run --no-capture-output -n dl-lab python src/run_stage2_dt_test.py
@@ -115,33 +115,38 @@ conda run --no-capture-output -n dl-lab python src/run_stage2_dt_test.py
 conda run --no-capture-output -n dl-lab python src/run_stage2_rl_final_lr.py
 ```
 
-针对 RL 子集经常超过 MI-27 预算的问题，另有独立的超预算惩罚扫描。它固定
-`beta=0.02`、`k=27`，扫描 `lambda={0.01, 0.025, 0.05, 0.1}`：
+针对 RL 子集经常超过 MI-33 预算的问题，另有独立的超预算惩罚扫描。它固定
+`beta=0.02`、`k=33`，扫描 `lambda={0.01, 0.025, 0.05, 0.1}`：
 
 ```text
-J(S) = Accuracy_CV(S) - beta * Corr(S) - lambda * max(0, (|S| - 27) / 27)
+J(S) = Accuracy_CV(S) - beta * Corr(S) - lambda * max(0, (|S| - 33) / 33)
 ```
 
-RL 学习期间仍可访问超过 27 个特征的子集，但最终只在初始 27 特征与 250 步轨迹中
-`|S| <= 27` 的候选里按 inner-CV DT Accuracy 选最优（同分取更少特征）。一键入口会先完成
+RL 学习期间仍可访问超过 33 个特征的子集，但最终只在初始 33 特征与 250 步轨迹中
+`|S| <= 33` 的候选里按 inner-CV DT Accuracy 选最优（同分取更少特征）。一键入口会先完成
 全部 4×4 个密封搜索并预检产物，随后才解封 outer test：
 
 ```bash
 conda run --no-capture-output -n dl-lab python src/run_stage2_budget_sweep.py
 ```
 
-纯 Accuracy 控制（`beta=0、lambda=0`，但保留最终 `|S|<=27` 的公平筛选）使用独立入口：
+纯 Accuracy 控制（`beta=0、lambda=0`，但保留最终 `|S|<=33` 的公平筛选）使用独立入口：
 
 ```bash
 conda run --no-capture-output -n dl-lab python src/run_stage2_accuracy_only.py
 ```
 
+当前 v15 的 baseline、主三方法和旧数据优选点可用统一入口断点续跑：
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_v15_key_experiments.py
+```
 
 
 这些正式入口都不接收命令行实验参数：
 
 - 配置统一写在 `src/stage2_rl_config.py`；
-- 每个 seed 的 461 行随机 test 在搜索期保持密封；
+- 每个 seed 的 140 行随机 test 在搜索期保持密封；
 - 搜索入口不导入 `lr_final`，只用 development 内部 5 折 DT 分数；
 - DT 评价入口不会重新运行 RL，只读取 `selection.json` 中前面筛选出的特征编号；
 - KBest 的 Mutual Information 只在该 seed 的 development 上拟合；

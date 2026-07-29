@@ -78,7 +78,7 @@ def _selection_signature(seed: int, value: float) -> dict[str, Any]:
         "effective_irfs_config": normalized_config,
         "inner_cv_folds": INNER_CV_FOLDS,
         "selection_tie_break": (
-            "among initial and trajectory candidates with |S|<=27: "
+            f"among initial and trajectory candidates with |S|<={BUDGET_SWEEP_FEATURE_BUDGET}: "
             "higher mean inner-CV accuracy, then fewer features"
         ),
     }
@@ -237,7 +237,10 @@ def _run_one(
             "stage": "stage2_budget_penalty_selection_only",
             "method": REPORT_NAME,
             "search_model": "DecisionTreeClassifier",
-            "reward": ("mean inner-CV accuracy - beta*correlation - lambda*max(0,(|S|-27)/27)"),
+            "reward": (
+                "mean inner-CV accuracy - beta*correlation - "
+                "lambda*max(0,(|S|-feature_budget)/feature_budget)"
+            ),
             "development_rows": int(context.split.train.X.shape[0]),
             "inner_cv_folds": INNER_CV_FOLDS,
             "official_test_accessed": False,
@@ -245,7 +248,7 @@ def _run_one(
             "outer_test_release_permitted": False,
             "selected_subset_rule": (
                 "maximum mean DT inner-CV accuracy among initial and trajectory candidates "
-                "with |S|<=27; ties use fewer features"
+                f"with |S|<={BUDGET_SWEEP_FEATURE_BUDGET}; ties use fewer features"
             ),
         },
         "dataset_metadata": context.split.train.metadata,
@@ -503,16 +506,16 @@ def _run_seed_dt(
     final_probe = DecisionTreeProbe(development, config, context.rng)
     candidates: list[tuple[str, tuple[int, ...], str, float | None, float | None]] = [
         (
-            "all_features_54",
+            "all_features",
             tuple(range(context.n_features)),
             "all cleaned features",
             None,
             None,
         ),
         (
-            "kbest_mutual_info_27",
+            "kbest_mutual_info",
             _top_k(ranked, K_BEST),
-            "MI fit on all development rows; k=27",
+            f"MI fit on all development rows; k={K_BEST}",
             None,
             None,
         ),
@@ -603,7 +606,7 @@ def _dt_aggregate(
         result["seed"]: next(
             method["dt_test_accuracy"]
             for method in result["methods"]
-            if method["name"] == "kbest_mutual_info_27"
+            if method["name"] == "kbest_mutual_info"
         )
         for result in seed_results
     }
@@ -631,8 +634,8 @@ def _dt_aggregate(
                 _summary(selection_values) if selection_values else None
             ),
             "dt_test_accuracy": _summary([row["dt_test_accuracy"] for row in rows]),
-            "delta_vs_kbest_mutual_info_27": _summary(deltas),
-            "win_tie_loss_vs_kbest_mutual_info_27": {
+            "delta_vs_kbest_mutual_info": _summary(deltas),
+            "win_tie_loss_vs_kbest_mutual_info": {
                 "win": sum(delta > 1e-12 for delta in deltas),
                 "tie": sum(abs(delta) <= 1e-12 for delta in deltas),
                 "loss": sum(delta < -1e-12 for delta in deltas),
@@ -650,7 +653,7 @@ def _dt_aggregate(
                         "selection_best_feasible_dt_inner_cv_accuracy"
                     ],
                     "dt_test_accuracy": row["dt_test_accuracy"],
-                    "delta_vs_kbest_mutual_info_27": delta,
+                    "delta_vs_kbest_mutual_info": delta,
                     "dt_fit_and_test_seconds": row["dt_fit_and_test_seconds"],
                     "selected_original_feature_ids": ";".join(
                         str(item) for item in row["selected_original_feature_ids"]
@@ -698,8 +701,8 @@ def run_dt_test() -> None:
             ),
             "dt_test_accuracy_mean": item["dt_test_accuracy"]["mean"],
             "dt_test_accuracy_std": item["dt_test_accuracy"]["std"],
-            "delta_vs_kbest_mutual_info_27_mean": item["delta_vs_kbest_mutual_info_27"]["mean"],
-            **item["win_tie_loss_vs_kbest_mutual_info_27"],
+            "delta_vs_kbest_mutual_info_mean": item["delta_vs_kbest_mutual_info"]["mean"],
+            **item["win_tie_loss_vs_kbest_mutual_info"],
         }
         for item in aggregate["methods"]
     ]
@@ -715,11 +718,11 @@ def run_dt_test() -> None:
         TABLE_ROOT / f"{BUDGET_SWEEP_TABLE_PREFIX}_dt_test_aggregate.csv",
     )
 
-    print("\nbudget-sweep DT aggregate against MI-27:")
+    print("\nbudget-sweep DT aggregate against MI-KBest:")
     for item in aggregate["methods"]:
         accuracy = item["dt_test_accuracy"]
-        delta = item["delta_vs_kbest_mutual_info_27"]
-        record = item["win_tie_loss_vs_kbest_mutual_info_27"]
+        delta = item["delta_vs_kbest_mutual_info"]
+        record = item["win_tie_loss_vs_kbest_mutual_info"]
         print(
             f"{item['name']:<29} features={item['selected_count']['mean']:.1f} "
             f"test={accuracy['mean']:.4f}±{accuracy['std']:.4f} "

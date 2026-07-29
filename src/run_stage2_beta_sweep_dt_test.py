@@ -116,16 +116,16 @@ def _run_seed(
 
     candidates: list[tuple[str, tuple[int, ...], str, float | None, float | None]] = [
         (
-            "all_features_54",
+            "all_features",
             tuple(range(context.n_features)),
             "all cleaned features",
             None,
             None,
         ),
         (
-            "kbest_mutual_info_27",
+            "kbest_mutual_info",
             _top_k(ranked, K_BEST),
-            "MI fit on all development rows; k=27",
+            f"MI fit on all development rows; k={K_BEST}",
             None,
             None,
         ),
@@ -217,7 +217,7 @@ def _aggregate(
         result["seed"]: next(
             method["dt_test_accuracy"]
             for method in result["methods"]
-            if method["name"] == "kbest_mutual_info_27"
+            if method["name"] == "kbest_mutual_info"
         )
         for result in seed_results
     }
@@ -245,8 +245,8 @@ def _aggregate(
             "selection_best_dt_inner_cv_accuracy": (_summary(selection_values) if selection_values else None),
             "dt_development_accuracy": _summary([row["dt_development_accuracy"] for row in rows]),
             "dt_test_accuracy": _summary([row["dt_test_accuracy"] for row in rows]),
-            "delta_vs_kbest_mutual_info_27": _summary(deltas),
-            "win_tie_loss_vs_kbest_mutual_info_27": {
+            "delta_vs_kbest_mutual_info": _summary(deltas),
+            "win_tie_loss_vs_kbest_mutual_info": {
                 "win": sum(delta > 1e-12 for delta in deltas),
                 "tie": sum(abs(delta) <= 1e-12 for delta in deltas),
                 "loss": sum(delta < -1e-12 for delta in deltas),
@@ -264,7 +264,7 @@ def _aggregate(
                     "selection_best_dt_inner_cv_accuracy": row["selection_best_dt_inner_cv_accuracy"],
                     "dt_development_accuracy": row["dt_development_accuracy"],
                     "dt_test_accuracy": row["dt_test_accuracy"],
-                    "delta_vs_kbest_mutual_info_27": delta,
+                    "delta_vs_kbest_mutual_info": delta,
                     "dt_fit_and_test_seconds": row["dt_fit_and_test_seconds"],
                     "selected_original_feature_ids": ";".join(
                         str(value) for value in row["selected_original_feature_ids"]
@@ -301,8 +301,8 @@ def _aggregate_csv_rows(aggregate: dict[str, Any]) -> list[dict[str, Any]]:
             ),
             "dt_test_accuracy_mean": item["dt_test_accuracy"]["mean"],
             "dt_test_accuracy_std": item["dt_test_accuracy"]["std"],
-            "delta_vs_kbest_mutual_info_27_mean": item["delta_vs_kbest_mutual_info_27"]["mean"],
-            **item["win_tie_loss_vs_kbest_mutual_info_27"],
+            "delta_vs_kbest_mutual_info_mean": item["delta_vs_kbest_mutual_info"]["mean"],
+            **item["win_tie_loss_vs_kbest_mutual_info"],
         }
         for item in aggregate["methods"]
     ]
@@ -330,11 +330,11 @@ def main() -> None:
         TABLE_ROOT / f"{BETA_SWEEP_TABLE_PREFIX}_dt_test_aggregate.csv",
     )
 
-    print("\nDT aggregate against MI-27:")
+    print("\nDT aggregate against MI-KBest:")
     for item in aggregate["methods"]:
         accuracy = item["dt_test_accuracy"]
-        delta = item["delta_vs_kbest_mutual_info_27"]
-        record = item["win_tie_loss_vs_kbest_mutual_info_27"]
+        delta = item["delta_vs_kbest_mutual_info"]
+        record = item["win_tie_loss_vs_kbest_mutual_info"]
         print(
             f"{item['name']:<28} features={item['selected_count']['mean']:.1f} "
             f"test={accuracy['mean']:.4f}±{accuracy['std']:.4f} "

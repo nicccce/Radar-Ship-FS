@@ -91,7 +91,7 @@ def _combine_results() -> dict[str, Any]:
         )
         if kbest_summary is None:
             kbest_summary = next(
-                method for method in dt_aggregate["methods"] if method["name"] == "kbest_mutual_info_27"
+                method for method in dt_aggregate["methods"] if method["name"] == "kbest_mutual_info"
             )
 
         summary = {
@@ -109,8 +109,8 @@ def _combine_results() -> dict[str, Any]:
             ],
             "selection_elapsed_seconds": selection_summary["selection_elapsed_seconds"],
             "dt_test_accuracy": beta_method["dt_test_accuracy"],
-            "delta_vs_kbest_mutual_info_27": beta_method["delta_vs_kbest_mutual_info_27"],
-            "win_tie_loss_vs_kbest_mutual_info_27": beta_method["win_tie_loss_vs_kbest_mutual_info_27"],
+            "delta_vs_kbest_mutual_info": beta_method["delta_vs_kbest_mutual_info"],
+            "win_tie_loss_vs_kbest_mutual_info": beta_method["win_tie_loss_vs_kbest_mutual_info"],
         }
         schedule_summaries.append(summary)
         csv_rows.append(
@@ -129,8 +129,8 @@ def _combine_results() -> dict[str, Any]:
                 "selection_elapsed_seconds_mean": summary["selection_elapsed_seconds"]["mean"],
                 "dt_test_accuracy_mean": summary["dt_test_accuracy"]["mean"],
                 "dt_test_accuracy_std": summary["dt_test_accuracy"]["std"],
-                "delta_vs_kbest_mutual_info_27_mean": summary["delta_vs_kbest_mutual_info_27"]["mean"],
-                **summary["win_tie_loss_vs_kbest_mutual_info_27"],
+                "delta_vs_kbest_mutual_info_mean": summary["delta_vs_kbest_mutual_info"]["mean"],
+                **summary["win_tie_loss_vs_kbest_mutual_info"],
             }
         )
 
@@ -139,7 +139,7 @@ def _combine_results() -> dict[str, Any]:
         "seeds": list(BETA_SWEEP_SEEDS),
         "budget": EXPLORATION_STEP_BUDGET,
         "all_schedule_selections_completed_before_any_test_release": True,
-        "kbest_mutual_info_27": kbest_summary,
+        "kbest_mutual_info": kbest_summary,
         "schedule_summaries": schedule_summaries,
     }
     _write_json(
@@ -192,11 +192,11 @@ def main() -> None:
         dt_test.main()
 
     aggregate = _combine_results()
-    print("\nguidance-sweep aggregate against MI-27:")
+    print("\nguidance-sweep aggregate against MI-KBest:")
     for item in aggregate["schedule_summaries"]:
         accuracy = item["dt_test_accuracy"]
-        delta = item["delta_vs_kbest_mutual_info_27"]
-        record = item["win_tie_loss_vs_kbest_mutual_info_27"]
+        delta = item["delta_vs_kbest_mutual_info"]
+        record = item["win_tie_loss_vs_kbest_mutual_info"]
         print(
             f"{item['schedule']:<24} phases="
             f"{item['relevance_steps']}/{item['dt_importance_steps']}/"

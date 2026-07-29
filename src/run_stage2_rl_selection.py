@@ -29,6 +29,7 @@ from methods.reinforced_run import (
 from stage2_cv import build_stage2_cv_context
 from stage2_rl_config import (
     DATA_DIR,
+    DATA_VERSION,
     DATASET,
     EXPECTED_CLEAN_FEATURES,
     EXPLORATION_STEP_BUDGET,
@@ -95,6 +96,7 @@ def _config_for_encoder(state_encoder: str) -> IrfsConfig:
         {
             "dataset": DATASET,
             "data_dir": DATA_DIR,
+            "radar_ship_version": DATA_VERSION,
             "seeds": SEEDS,
             "test_fraction": TEST_FRACTION,
             "validation_fraction": VALIDATION_FRACTION,

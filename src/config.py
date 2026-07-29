@@ -43,6 +43,11 @@ class IrfsConfig:
     # (``data/`` is gitignored), so large raw datasets live locally rather than in the repo.
     data_dir: str = "data"
 
+    # Radar-ship source-file version. Other datasets ignore this field. Keeping the version in the
+    # effective config makes long-running selection artifacts self-identifying and prevents a v10
+    # result from being resumed for v15 merely because the remaining hyperparameters match.
+    radar_ship_version: str = "v10"
+
     # --- Data split ratios (ASM-001): 80/20 train/test, validation carved from train ---
     test_fraction: float = 0.2
     validation_fraction: float = 0.2  # fraction of the post-test training pool

@@ -132,19 +132,26 @@ def _label_counts(y: np.ndarray) -> dict[str, int]:
 
 def _load_radar_ship(
     data_dir: str,
+    version: str,
 ) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
     """Load and leakage-safely clean the supplied radar-ship SVM-light train/test files.
 
     Constant and exact-duplicate columns are identified on the first supplied file only, preserving
-    the established 54-feature candidate pool. The same column mask is applied to the second file,
-    then all rows are concatenated. Row splitting happens later over the combined rows through the
-    ordinary stratified-random splitter.
+    the version-specific candidate pool. The same column mask is applied to the second file, then
+    all rows are concatenated. Row splitting happens later over the combined rows through the
+    ordinary stratified-random splitter. Only the source filenames vary by version; preprocessing
+    is shared unchanged.
     """
     from sklearn.datasets import load_svmlight_file
 
+    if not version or any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        for character in version
+    ):
+        raise ValueError(f"invalid radar_ship_version: {version!r}")
     root = Path(data_dir)
-    train_path = root / "sim_ship_cr_v10.train.svm"
-    test_path = root / "sim_ship_cr_v10.test.svm"
+    train_path = root / f"sim_ship_cr_{version}.train.svm"
+    test_path = root / f"sim_ship_cr_{version}.test.svm"
     missing = [str(path) for path in (train_path, test_path) if not path.is_file()]
     if missing:
         raise FileNotFoundError(
@@ -189,6 +196,7 @@ def _load_radar_ship(
     feature_names = [f"feature_{feature_id}" for feature_id in final_ids]
     metadata = {
         "source_format": "svmlight",
+        "source_version": version,
         "source_files": {
             "train": {"name": train_path.name, "sha256": _sha256(train_path)},
             "test": {"name": test_path.name, "sha256": _sha256(test_path)},
@@ -230,14 +238,17 @@ def load(config: IrfsConfig) -> LoadedDataset:
     predefined_test_indices = None
     metadata = None
     if name == "radar_ship":
-        X, y, feature_names, metadata = _load_radar_ship(config.data_dir)
+        X, y, feature_names, metadata = _load_radar_ship(
+            config.data_dir,
+            config.radar_ship_version,
+        )
         groups = None
         metadata = {
             **metadata,
             "row_split_protocol": "combine_source_files_then_stratified_random_split",
             "source_file_row_boundary_used": False,
             "candidate_feature_pool_note": (
-                "the established 54-feature mask is shared by every method; both files are "
+                "the source-train-fitted feature mask is shared by every method; both files are "
                 "combined before train/validation/test row splitting"
             ),
         }

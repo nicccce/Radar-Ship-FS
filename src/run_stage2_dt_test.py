@@ -133,15 +133,15 @@ def _run_seed(seed: int) -> dict[str, Any]:
 
     candidates = (
         (
-            "all_features_54",
+            "all_features",
             tuple(range(context.n_features)),
-            "all 54 features",
+            f"all {context.n_features} cleaned features",
             None,
         ),
         (
-            "kbest_mutual_info_27",
+            "kbest_mutual_info",
             _top_k(ranked, K_BEST),
-            "MI fit on all development rows; k=27",
+            f"MI fit on all development rows; k={K_BEST}",
             None,
         ),
         (

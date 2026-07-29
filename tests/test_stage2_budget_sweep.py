@@ -13,12 +13,13 @@ from stage2_rl_config import (
     BUDGET_SWEEP_FEATURE_BUDGET,
     BUDGET_SWEEP_SEEDS,
     BUDGET_SWEEP_VALUES,
+    K_BEST,
 )
 
 
 def test_budget_grid_and_fixed_low_beta() -> None:
     assert BUDGET_SWEEP_BETA == 0.02
-    assert BUDGET_SWEEP_FEATURE_BUDGET == 27
+    assert BUDGET_SWEEP_FEATURE_BUDGET == K_BEST
     assert BUDGET_SWEEP_VALUES == (0.01, 0.025, 0.05, 0.1)
     assert BUDGET_SWEEP_SEEDS == (42, 43, 44, 45)
 
@@ -31,7 +32,7 @@ def test_lambda_config_changes_only_over_budget_weight() -> None:
     assert right.pop("over_budget_penalty_weight") == 0.1
     assert left == right
     assert left["correlation_penalty_weight"] == 0.02
-    assert left["feature_budget"] == 27
+    assert left["feature_budget"] == K_BEST
     with pytest.raises(ValueError, match="non-negative"):
         budget_sweep._config_for_lambda(-0.01)
 
@@ -48,8 +49,8 @@ def test_lambda_tag_and_signature_are_stable() -> None:
     assert json.loads(json.dumps(signature)) == signature
     assert signature["beta"] == 0.02
     assert signature["lambda"] == 0.025
-    assert signature["feature_budget"] == 27
-    assert signature["effective_irfs_config"]["feature_budget"] == 27
+    assert signature["feature_budget"] == K_BEST
+    assert signature["effective_irfs_config"]["feature_budget"] == K_BEST
 
 
 def test_resume_rejects_oversized_selection(tmp_path) -> None:
@@ -65,11 +66,11 @@ def test_resume_rejects_oversized_selection(tmp_path) -> None:
                     "outer_test_release_permitted": False,
                 },
                 "trajectory": [{}] * 250,
-                "selected_clean_indices": list(range(28)),
-                "selected_count": 28,
+                "selected_clean_indices": list(range(K_BEST + 1)),
+                "selected_count": K_BEST + 1,
                 "initial_candidate": {
                     "included_in_final_candidate_pool": True,
-                    "selected_count": 27,
+                    "selected_count": K_BEST,
                 },
             }
         ),
@@ -79,7 +80,7 @@ def test_resume_rejects_oversized_selection(tmp_path) -> None:
     assert budget_sweep._load_matching(path, signature) is None
 
 
-def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
+def test_dt_aggregate_reports_paired_delta_against_mi_kbest() -> None:
     seed_results = []
     for seed, mi_score, rl_score in ((42, 0.80, 0.85), (43, 0.90, 0.88)):
         common = {
@@ -94,9 +95,9 @@ def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
                 "methods": [
                     {
                         **common,
-                        "name": "kbest_mutual_info_27",
+                        "name": "kbest_mutual_info",
                         "lambda": None,
-                        "selected_count": 27,
+                        "selected_count": K_BEST,
                         "selection_best_feasible_dt_inner_cv_accuracy": None,
                         "dt_test_accuracy": mi_score,
                     },
@@ -115,8 +116,8 @@ def test_dt_aggregate_reports_paired_delta_against_mi_27() -> None:
     aggregate, flat_rows = budget_sweep._dt_aggregate(seed_results)
     selected = next(item for item in aggregate["methods"] if item["name"] == "lambda_0p025_selected")
 
-    assert selected["delta_vs_kbest_mutual_info_27"]["values"] == pytest.approx([0.05, -0.02])
-    assert selected["win_tie_loss_vs_kbest_mutual_info_27"] == {
+    assert selected["delta_vs_kbest_mutual_info"]["values"] == pytest.approx([0.05, -0.02])
+    assert selected["win_tie_loss_vs_kbest_mutual_info"] == {
         "win": 1,
         "tie": 0,
         "loss": 1,
