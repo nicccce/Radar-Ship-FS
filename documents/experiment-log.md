@@ -1292,3 +1292,66 @@ conda run --no-capture-output -n dl-lab python src/run_stage2_rl_final_lr.py
 source train/test 行数均为 1948/836，选择期 test/LR 隔离标记正确；v15.3 产物中没有任何
 trained-GCN 文件或目录。运行前定向测试为 `16 passed`；运行后全量 pytest 为 `106 passed`，本轮
 改动文件的 `ruff check` 全部通过。
+
+
+## 2026-08-01 v16n：baseline 与强化学习复跑
+
+本轮将阶段 2 固定配置切换到 `DATA_VERSION="v16n"`。加载器从 75 个原始特征中清洗得到
+65 个有效特征，因此同步设置 `EXPECTED_CLEAN_FEATURES=65`，MI-KBest 使用 `k=32`。
+运行 seeds 42–46；每种 RL 方法每个 seed 运行 250 步，当前 active run matrix 为 MARLFS 与
+Full-IRFS-fixed，未运行 Full-IRFS-trained-GCN。
+
+### 数据与协议
+
+- train：`dataset/sim_ship_cr_v16n.train.svm`，`1948×75`，SHA-256
+  `8aa25a1c3298d97e39ee400ea341244c04475e7546e1a5ef2bea7568f7b2551d`；
+- test：`dataset/sim_ship_cr_v16n.test.svm`，`836×75`，SHA-256
+  `e0b09f6c3de9da6ee0bf545d106c3ea9a5e72b87fad186c497d4a21b987501a8`；
+- RL 仅使用 source train 内固定分层 5 折 DT Accuracy 反馈；source test 只在特征冻结后用于
+  最终 DT/LR 评价；
+- Hybrid Teaching 步数为 83/83/84。
+
+### 基础 LR baseline
+
+| 方法 | 平均特征数 | Test Accuracy | Balanced Accuracy | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| All Features | 65.0 | 0.9151 ± 0.0000 | 0.9146 | 0.9111 | 0.9666 |
+| MI-KBest，k=32 | 32.0 | 0.9144 ± 0.0007 | 0.9138 | 0.9101 | 0.9706 |
+
+### RL 内部 5 折选择结果
+
+共完成 2 方法 × 5 seeds = 10 次选择、2500 个 RL step。
+
+| 方法 | 平均特征数 | 压缩率 | 最佳 inner-CV DT Accuracy | 最佳步数 | 选择 Jaccard | 耗时/seed |
+|---|---:|---:|---:|---:|---:|---:|
+| MARLFS | 29.0 ± 4.7 | 55.38% | 0.9269 ± 0.0015 | 110.8 | 0.2803 | 175.0 s |
+| Full-IRFS-fixed | 47.6 ± 4.4 | 26.77% | 0.9292 ± 0.0006 | 123.2 | 0.5775 | 209.4 s |
+
+### 使用已冻结特征的 source-test DT
+
+| 方法 | 平均特征数 | DT Test Accuracy |
+|---|---:|---:|
+| All Features | 65.0 | 0.9084 ± 0.0048 |
+| MI-KBest，k=32 | 32.0 | 0.9129 ± 0.0052 |
+| MARLFS | 29.0 ± 4.7 | 0.9203 ± 0.0080 |
+| Full-IRFS-fixed | 47.6 ± 4.4 | 0.9055 ± 0.0065 |
+| MI-KBest，k 匹配 fixed | 47.6 ± 4.4 | 0.9120 ± 0.0060 |
+
+### 使用相同 RL 特征的独立 source-test LR
+
+| 方法 | 平均特征数 | LR Test Accuracy | Balanced Accuracy | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| MARLFS | 29.0 ± 4.7 | 0.9132 ± 0.0038 | 0.9123 | 0.9081 | 0.9642 |
+| Full-IRFS-fixed | 47.6 ± 4.4 | 0.9136 ± 0.0049 | 0.9130 | 0.9092 | 0.9675 |
+
+### 产物
+
+- `experiments/radar_ship_v16n_basic_lr/`；
+- `experiments/radar_ship_v16n_stage2_rl_selection/`；
+- `experiments/radar_ship_v16n_stage2_dt_test/`；
+- `experiments/radar_ship_v16n_stage2_rl_final_lr/`；
+- `results/tables/radar_ship_v16n_stage2_*.csv`；
+- `logs/v16n_baselines_2026-08-01.log`；
+- `logs/v16n_rl_selection_2026-08-01.log`；
+- `logs/v16n_rl_dt_test_2026-08-01.log`；
+- `logs/v16n_rl_final_lr_2026-08-01.log`。

@@ -16,8 +16,8 @@ from pathlib import Path
 # 数据和重复实验设置。
 DATASET = "radar_ship"
 DATA_DIR = "../dataset"
-DATA_VERSION = "v15.3"
-EXPECTED_CLEAN_FEATURES = 66
+DATA_VERSION = "v16n"
+EXPECTED_CLEAN_FEATURES = 65
 SEEDS = (42, 43, 44, 45, 46)
 
 # RL 搜索设置。三个方法共享预算、数据划分、DT probe 和其余超参数。
