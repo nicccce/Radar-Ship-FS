@@ -1294,64 +1294,107 @@ trained-GCN 文件或目录。运行前定向测试为 `16 passed`；运行后�
 改动文件的 `ruff check` 全部通过。
 
 
-## 2026-08-01 v16n：baseline 与强化学习复跑
+## 2026-08-02 stable_v1：强化学习训练稳定性内核重构
 
-本轮将阶段 2 固定配置切换到 `DATA_VERSION="v16n"`。加载器从 75 个原始特征中清洗得到
-65 个有效特征，因此同步设置 `EXPECTED_CLEAN_FEATURES=65`，MI-KBest 使用 `k=32`。
-运行 seeds 42–46；每种 RL 方法每个 seed 运行 250 步，当前 active run matrix 为 MARLFS 与
-Full-IRFS-fixed，未运行 Full-IRFS-trained-GCN。
+本次只处理工程化、训练设施与数值稳定性，不调整奖励公式、advisor 数学规则、同步
+SELECT/DESELECT 动作空间和最终候选选择规则。正式实现提交为
+`ba1c79d refactor: add stable RL training core`。
 
-### 数据与协议
+### 训练语义
 
-- train：`dataset/sim_ship_cr_v16n.train.svm`，`1948×75`，SHA-256
-  `8aa25a1c3298d97e39ee400ea341244c04475e7546e1a5ef2bea7568f7b2551d`；
-- test：`dataset/sim_ship_cr_v16n.test.svm`，`836×75`，SHA-256
-  `e0b09f6c3de9da6ee0bf545d106c3ea9a5e72b87fad186c497d4a21b987501a8`；
-- RL 仅使用 source train 内固定分层 5 折 DT Accuracy 反馈；source test 只在特征冻结后用于
-  最终 DT/LR 评价；
-- Hybrid Teaching 步数为 83/83/84。
+stable 训练路径统一为以下配置：
 
-### 基础 LR baseline
+| 项目 | stable_v1 设置 |
+|---|---:|
+| 算法 | Double DQN |
+| discount | 0.9 |
+| optimizer | Adam |
+| learning rate | 3e-4 |
+| replay capacity | 2048 个 joint 环境步 |
+| batch / warm-up | 32 / 32 个有效环境步 |
+| target hard sync | 每 25 次 learner update |
+| loss | SmoothL1 / Huber，全部有效 `(batch, agent)` 项取 mean |
+| gradient clipping | global norm 10 |
+| epsilon | 1.0 线性降至 0.05，前 70% 总步数完成衰减 |
+| tensor dtype / device | float32 / CPU reference path |
 
-| 方法 | 平均特征数 | Test Accuracy | Balanced Accuracy | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|
-| All Features | 65.0 | 0.9151 ± 0.0000 | 0.9146 | 0.9111 | 0.9666 |
-| MI-KBest，k=32 | 32.0 | 0.9144 ± 0.0007 | 0.9138 | 0.9101 | 0.9706 |
+一个环境步现在只生成一条 `JointTransition`，其中同时保存全部 feature-agent 的 action 和 reward
+vector，不再把同一步复制成 N 份 replay transition。`IndependentQSystem` 仍保留每个特征一个独立
+Q head，但每个 head 一次处理完整 batch，统一输出 `[B,N,2]`。
 
-### RL 内部 5 折选择结果
+online QSystem 包含全部 online heads 和可选 trainable GCN；target QSystem 是无 optimizer 的显式
+副本。minimal/fixed encoder 在 online/target 间共享只读实例，trained-GCN 的 target encoder 独立
+复制。trainer 只创建一个 optimizer，覆盖全部 online heads 和可选 online encoder，避免同一参数被
+多个 optimizer 重复管理。
 
-共完成 2 方法 × 5 seeds = 10 次选择、2500 个 RL step。
+### 稳定性保护
 
-| 方法 | 平均特征数 | 压缩率 | 最佳 inner-CV DT Accuracy | 最佳步数 | 选择 Jaccard | 耗时/seed |
-|---|---:|---:|---:|---:|---:|---:|
-| MARLFS | 29.0 ± 4.7 | 55.38% | 0.9269 ± 0.0015 | 110.8 | 0.2803 | 175.0 s |
-| Full-IRFS-fixed | 47.6 ± 4.4 | 26.77% | 0.9292 ± 0.0006 | 123.2 | 0.5775 | 209.4 s |
+- 使用 online QSystem 选择 next action、target QSystem 评价该 action；terminal transition 不做
+  bootstrap。
+- 全选或全不选继续沿用原 no-op guard：正常记录 accuracy、reward 和动作统计，但
+  `applied=false`，不进入 replay，也不触发 optimizer update。
+- replay 超容量后淘汰最旧 joint transition；有效环境步达到 warm-up 后每步最多更新一次。
+- Huber loss 前检查有限性；反向后执行 global gradient norm clip，并检查 loss、梯度和状态/Q tensor
+  中的 NaN/Inf。
+- minimal/fixed/trained-GCN 全部提供 `[B,N,D]` 的批量接口。minimal 直接批量生成相关性状态，不再
+  调用旧逐 agent encoder；trained-GCN 的参数相关输出不跨 optimizer step 缓存。
+- trained-GCN online state 会随 optimizer 更新变化；target GCN 在同步点前保持冻结。
 
-### 使用已冻结特征的 source-test DT
+### Checkpoint 与恢复
 
-| 方法 | 平均特征数 | DT Test Accuracy |
-|---|---:|---:|
-| All Features | 65.0 | 0.9084 ± 0.0048 |
-| MI-KBest，k=32 | 32.0 | 0.9129 ± 0.0052 |
-| MARLFS | 29.0 ± 4.7 | 0.9203 ± 0.0080 |
-| Full-IRFS-fixed | 47.6 ± 4.4 | 0.9055 ± 0.0065 |
-| MI-KBest，k 匹配 fixed | 47.6 ± 4.4 | 0.9120 ± 0.0060 |
+每 25 步及非整周期结束时原子写入 `checkpoint.pt`，内容包括：
 
-### 使用相同 RL 特征的独立 source-test LR
+- 当前 step、committed subset、候选 archive 和完整 trajectory；
+- online/target QSystem、optimizer、joint replay 和 learner update 计数；
+- epsilon scheduler、reward/advisor 内部状态；
+- NumPy、Python 和 Torch RNG 状态；
+- config SHA-256、development fingerprint、method SHA-256 和 seed。
 
-| 方法 | 平均特征数 | LR Test Accuracy | Balanced Accuracy | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|---:|
-| MARLFS | 29.0 ± 4.7 | 0.9132 ± 0.0038 | 0.9123 | 0.9081 | 0.9642 |
-| Full-IRFS-fixed | 47.6 ± 4.4 | 0.9136 ± 0.0049 | 0.9130 | 0.9092 | 0.9675 |
+恢复时会拒绝 config/data/method/seed 或 replay/scheduler/advisor 配置不匹配的 checkpoint。自动测试
+确认中断恢复后的 online/target 参数、replay 抽样序列、learner update、trajectory 和 selection 与
+连续运行 bit-identical；`elapsed_seconds` 是真实墙钟观测，不纳入 bit-identical 比较。加载路径同时
+兼容 Torch 1.x 和 Torch 2.6+ 的 `weights_only` 默认行为。
 
-### 产物
+### 诊断与产物
 
-- `experiments/radar_ship_v16n_basic_lr/`；
-- `experiments/radar_ship_v16n_stage2_rl_selection/`；
-- `experiments/radar_ship_v16n_stage2_dt_test/`；
-- `experiments/radar_ship_v16n_stage2_rl_final_lr/`；
-- `results/tables/radar_ship_v16n_stage2_*.csv`；
-- `logs/v16n_baselines_2026-08-01.log`；
-- `logs/v16n_rl_selection_2026-08-01.log`；
-- `logs/v16n_rl_dt_test_2026-08-01.log`；
-- `logs/v16n_rl_final_lr_2026-08-01.log`。
+每步统一记录：subset size、accuracy、epsilon、proposed select count、transition applied、reward
+min/mean/max、replay size、是否更新、loss、TD error、Q/target Q 统计、gradient norm、target sync、
+advisor override count 和 elapsed seconds。
+
+`StepCompleted`、`UpdateCompleted`、`CheckpointSaved` 是不可变 observer 事件；控制台、
+`training.csv` 和 `training.jsonl` 复用同一事件源。恢复时 JSONL 会按 step 去重，避免 checkpoint
+之前日志已写出但训练状态尚未提交所造成的重复记录。
+
+每个 stable run 统一生成 `manifest.json`、`training.csv`、`training.jsonl`、`selection.json` 和
+`checkpoint.pt`。manifest 记录规范化 TOML、config/method/data hash、Git 状态、数据摘要以及
+Python/NumPy/pandas/sklearn/Torch 版本。结果根目录由 `algorithm_version + config_hash` 独占，
+禁止 legacy/stable 或不同配置混写。
+
+### 工程隔离与兼容
+
+- 新实现位于 `src/radar_ship_fs/`；stable 模块由架构测试禁止 import legacy 和顶层 stage2 脚本。
+- 旧的 3048 行 stage2 orchestration 已整体迁入 `radar_ship_fs.legacy.stage2`，原
+  `src/run_stage2_*.py` 均为 12 行兼容包装；旧命令、旧 import、测试 monkeypatch 和历史产物格式
+  继续有效。
+- trained-GCN stable 路径与测试同步完成，但 `configs/v16n/stable.toml` 默认不启用。
+- 本轮没有改变 reward、advisor、动作空间或 final candidate 规则，也没有启动正式的 v16n
+  5-seed × 250-step stable 实验。
+
+### 验证记录
+
+```bash
+conda run -n dl-lab python -m ruff format .
+conda run -n dl-lab python -m ruff check .
+conda run -n dl-lab python -m pytest -q
+```
+
+- Ruff：全部通过；
+- pytest：`129 passed in 47.68s`，包含原有 106 项回归；
+- 三种 encoder 均完成 stable 短运行；
+- synthetic terminal MDP 上 TD loss 下降并学习到已知较优动作；
+- WDBC 两步 CLI smoke 通过，生成完整 manifest、训练日志、selection 和 checkpoint；manifest 中
+  method hash 为 `66d931ff7ba5...`，数据摘要为 455 行 search、114 行 held-out、30 个特征。
+
+结论：本轮建立了可诊断、可恢复、目标网络隔离且 optimizer 所有权唯一的 stable 训练基线。后续若
+要比较 reward、counterfactual credit、动作空间或 advisor 规则，应在该内核上作为独立实验改动，
+避免再与训练设施问题混杂。
