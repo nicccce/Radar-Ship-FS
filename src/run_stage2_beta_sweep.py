@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
-"""One-click beta sweep: finish every RL selection, then run held-out DT validation."""
+"""Thin compatibility entry point for the frozen legacy-v1 implementation."""
 
-from run_stage2_beta_sweep_dt_test import main as run_dt_test
-from run_stage2_beta_sweep_selection import main as run_selection
+from __future__ import annotations
 
+import sys
 
-def main() -> None:
-    run_selection()
-    run_dt_test()
-
+from radar_ship_fs.legacy.stage2 import run_stage2_beta_sweep as _implementation
 
 if __name__ == "__main__":
-    main()
+    _implementation.main()
+else:
+    sys.modules[__name__] = _implementation

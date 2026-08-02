@@ -1,0 +1,55 @@
+schema_version = 1
+algorithm_version = "stable_v1"
+
+[dataset]
+name = "radar_ship"
+version = "v16n"
+data_dir = "../dataset"
+seeds = [42, 43, 44, 45, 46]
+validation_fraction = 0.25
+inner_cv_folds = 5
+expected_clean_features = 65
+
+[training]
+steps = 250
+discount = 0.9
+learning_rate = 0.0003
+batch_size = 32
+replay_capacity = 2048
+warmup_steps = 32
+target_sync_interval = 25
+gradient_clip_norm = 10.0
+epsilon_start = 1.0
+epsilon_end = 0.05
+epsilon_decay_fraction = 0.7
+checkpoint_interval = 25
+hidden_layer_sizes = [128, 128]
+activation = "relu"
+correlation_penalty_weight = 1.0
+over_budget_penalty_weight = 0.0
+reward_scheme = "dt_importance"
+per_agent_credit = "reference"
+neighbor_global_mix = 0.5
+per_node_features = "summary_statistics"
+state_pooling = "dt_importance"
+gcn_hidden_dim = 4
+gcn_layers = 1
+hybrid_switch_step = 83
+hybrid_withdraw_step = 166
+
+[[methods]]
+name = "marlfs"
+encoder = "minimal"
+
+[[methods]]
+name = "full_irfs_fixed"
+encoder = "fixed"
+
+[[methods]]
+name = "full_irfs_trained_gcn"
+encoder = "trained_gcn"
+enabled = false
+
+[output]
+root = "experiments/radar_ship_v16n_stage2_rl_selection_stable_v1"
+resume = true

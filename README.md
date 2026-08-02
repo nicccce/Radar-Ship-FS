@@ -63,7 +63,8 @@ python -m pip install --no-deps -e .
 conda run -n dl-lab python -m pip install pandas scikit-learn pytest ruff mrmr-selection
 ```
 
-依赖声明见 [pyproject.toml](pyproject.toml)，锁定依赖见 [requirements.lock](requirements.lock)。
+依赖声明见 [pyproject.toml](pyproject.toml)，pip 锁定依赖见 [requirements.lock](requirements.lock)；
+已通过全量测试的实际 `dl-lab` 快照见 [environment.dl-lab.yml](environment.dl-lab.yml)。
 
 ## 快速验证
 
@@ -87,6 +88,37 @@ python src/run_irfs.py --dataset wdbc --seeds 42 --diagnostic-ablations
 
 默认实验产物会写入 `experiments/<dataset>/seed-<seed>/`，跨随机种子的聚合结果写入
 `experiments/<dataset>/aggregate.json`。
+
+## stable_v1 训练内核
+
+新的工程化入口只读取版本化 TOML，默认配置是
+[`configs/v16n/stable.toml`](configs/v16n/stable.toml)。先检查展开后的 seed/method 矩阵：
+
+```bash
+conda run -n dl-lab env PYTHONPATH=src \
+  python -m radar_ship_fs.experiment dry-run --config configs/v16n/stable.toml
+```
+
+确认后运行；`--seed`、`--method` 只能过滤 TOML 已声明的矩阵，不能覆盖超参数：
+
+```bash
+conda run -n dl-lab env PYTHONPATH=src \
+  python -m radar_ship_fs.experiment run --config configs/v16n/stable.toml --resume
+```
+
+stable 内核使用 joint replay、批量状态编码、Double DQN、独立 target QSystem、Huber mean loss、
+全局梯度裁剪和线性 epsilon 调度。每个 `seed/method` 目录统一生成：
+
+- `manifest.json`：规范化配置、SHA-256、数据身份、Git 与运行时版本；
+- `training.csv` / `training.jsonl`：同一不可变 observer 事件产生的逐步诊断；
+- `selection.json`：保留原选择核心字段并追加 stable 诊断；
+- `checkpoint.pt`：online/target、optimizer、joint replay、scheduler、advisor 与 RNG 状态。
+
+结果根目录由 `algorithm_version + config_hash` 独占，不允许 legacy/stable 或不同配置混写。
+`full_irfs_trained_gcn` 已实现并有集成测试，但在默认 TOML 中保持关闭。
+
+下面的 `src/run_stage2_*.py` 是冻结的 `legacy_v1` 历史复现入口。它们继续使用原目录、签名和
+完成产物，不再承接 stable 训练功能；新代码也通过架构测试禁止导入这些脚本。
 
 ## 阶段 2 雷达 RL 正式实验
 
