@@ -12,6 +12,8 @@ CLI 只允许选择配置、恢复策略，以及过滤 TOML 中已经声明的 
 replay、target 同步等参数必须修改 TOML，使 manifest 中的规范化配置与实际运行始终一致。
 
 默认矩阵启用 `marlfs/minimal` 和 `full_irfs_fixed/fixed`；`trained_gcn` 与 stable trainer 同步实现、
-同步测试，但默认关闭。stable 结果必须使用独立根目录，不能与 `legacy_v1` 历史产物混放。
+同步测试，但默认关闭。需要单独运行 trained-GCN 时使用
+`configs/v16n/stable_trained_gcn.toml`；它保持相同数据和训练超参数，只限定 GCN 方法并使用
+独立结果根目录。stable 结果不能与 `legacy_v1` 历史产物混放。
 
 旧的无 TOML stage2 配置与命令保留用于历史复现，不再作为新实验的扩展点。

@@ -1398,3 +1398,90 @@ conda run -n dl-lab python -m pytest -q
 结论：本轮建立了可诊断、可恢复、目标网络隔离且 optimizer 所有权唯一的 stable 训练基线。后续若
 要比较 reward、counterfactual credit、动作空间或 advisor 规则，应在该内核上作为独立实验改动，
 避免再与训练设施问题混杂。
+
+## 2026-08-02 v16n：baseline 与 stable_v1 RL 正式复跑
+
+本轮在训练内核重构完成后，正式运行 v16n 的基础 LR baseline 和三种 stable_v1 RL。主配置
+`configs/v16n/stable.toml` 启用 MARLFS、Full-IRFS-fixed；其中默认关闭的
+Full-IRFS-trained-GCN 使用训练参数相同、结果根目录隔离的
+`configs/v16n/stable_trained_gcn.toml` 补跑。
+
+### 数据、配置与命令
+
+- source train：`dataset/sim_ship_cr_v16n.train.svm`，1948 行，SHA-256
+  `8aa25a1c3298d97e39ee400ea341244c04475e7546e1a5ef2bea7568f7b2551d`；
+- source test：`dataset/sim_ship_cr_v16n.test.svm`，836 行，SHA-256
+  `e0b09f6c3de9da6ee0bf545d106c3ea9a5e72b87fad186c497d4a21b987501a8`；
+- 清洗后候选池为 65/75 个特征；seeds 为 42–46，MI-KBest 固定 `k=32`；
+- MARLFS/fixed stable 配置 SHA-256 为
+  `5e27b426b60cfd9ec3c4652ae3b9010c613075620a69325ddd4c8cfea1e31fba`；
+- trained-GCN 专用 stable 配置 SHA-256 为
+  `c6817f532befb427505af9675bc980d5e2eb4b2d90a265da632eafeb06f780a2`；
+- 每种 RL 每个 seed 运行 250 步，使用 1948 行 source train 内的固定分层 5 折 DT Accuracy；
+  全部 15 次选择冻结后，才在 836 行 source test 上运行最终 DT/LR 评价。
+
+```bash
+conda run --no-capture-output -n dl-lab python src/run_basic_baselines.py
+conda run -n dl-lab env PYTHONPATH=src \
+  python -m radar_ship_fs.experiment dry-run --config configs/v16n/stable.toml
+conda run --no-capture-output -n dl-lab env PYTHONPATH=src \
+  python -m radar_ship_fs.experiment run --config configs/v16n/stable.toml --resume
+conda run --no-capture-output -n dl-lab env PYTHONPATH=src \
+  python -m radar_ship_fs.experiment run --config configs/v16n/stable_trained_gcn.toml --resume
+```
+
+### 基础 LR baseline
+
+| 方法 | 特征数 | Test Accuracy | Balanced Accuracy | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| All Features | 65.0 | 0.9151 ± 0.0000 | 0.9146 | 0.9111 | 0.9666 |
+| MI-KBest，k=32 | 32.0 | 0.9144 ± 0.0007 | 0.9138 | 0.9101 | 0.9706 |
+
+### stable_v1 RL 内部 5 折选择
+
+共完成 3 方法 × 5 seeds = 15 次选择、3750 个 RL step。每次运行均产生完整 checkpoint 和
+250 行训练诊断，所有数值字段有限；每次 learner update 数为 219，拒绝 transition 数为 0。
+
+| 方法 | 平均特征数 | 压缩率 | 最佳 inner-CV DT | 最佳步数 | 选择 Jaccard | 耗时/seed |
+|---|---:|---:|---:|---:|---:|---:|
+| MARLFS | 35.2 ± 2.2 | 45.85% | 0.9252 ± 0.0028 | 79.4 ± 60.9 | 0.3727 | 92.8 ± 4.6 s |
+| Full-IRFS-fixed | 43.6 ± 4.6 | 32.92% | 0.9290 ± 0.0009 | 150.4 ± 50.9 | 0.5540 | 152.4 ± 3.2 s |
+| Full-IRFS-trained-GCN | 47.2 ± 4.1 | 27.38% | 0.9292 ± 0.0015 | 116.4 ± 51.6 | 0.5707 | 171.5 ± 2.7 s |
+
+15 次搜索记录的累计耗时约 2084 秒（34.7 分钟）。
+
+### 冻结特征后的 source-test DT/LR
+
+最终评价不重跑 RL，也不修改选择结果。每个 DT/LR 都用全部 source train 拟合，并只在固定的
+source test 上评价。`胜/平/负` 和 DT 差值均以同 seed 的 MI-32 为参照。
+
+| 方法 | 平均特征数 | DT Test Accuracy | 相对 MI-32 | 胜/平/负 | LR Test Accuracy |
+|---|---:|---:|---:|---:|---:|
+| All Features | 65.0 | 0.9084 ± 0.0048 | -0.0045 | 1/0/4 | 0.9151 ± 0.0000 |
+| MI-KBest，k=32 | 32.0 | 0.9129 ± 0.0052 | 0 | 0/5/0 | 0.9144 ± 0.0007 |
+| MARLFS | 35.2 ± 2.2 | **0.9167 ± 0.0099** | **+0.0038** | **3/0/2** | 0.9112 ± 0.0047 |
+| Full-IRFS-fixed | 43.6 ± 4.6 | 0.9069 ± 0.0086 | -0.0060 | 1/0/4 | 0.9117 ± 0.0029 |
+| Full-IRFS-trained-GCN | 47.2 ± 4.1 | 0.9117 ± 0.0066 | -0.0012 | 3/0/2 | **0.9177 ± 0.0021** |
+| MI-KBest，k 匹配 fixed | 43.6 ± 4.6 | 0.9124 ± 0.0023 | -0.0005 | 3/0/2 | 0.9115 ± 0.0035 |
+
+### 结论与核验
+
+1. stable MARLFS 以平均 35.2 个特征取得本轮最高的 source-test DT Accuracy，较 MI-32 平均高
+   0.0038，并在 5 个 seed 中赢 3 次、输 2 次；seed 数不足以据此宣称统计显著性。
+2. trained-GCN 的 source-test LR 为 0.9177，比 All Features 高 0.0026，并且在三个 RL 方法中
+   选择 Jaccard 最高；其 DT 为 0.9117，接近 MI-32，但平均多使用 15.2 个特征。
+3. Full-IRFS-fixed 的 inner-CV 均值较高且选择稳定，但该优势没有迁移到 source test；其 DT
+   Accuracy 比 MI-32 低 0.0060，仍需关注搜索选择偏差或 train/test 分布差异。
+4. GCN 补跑前的定向测试为 `20 passed`；全量回归为 `129 passed in 48.37s`。已核验 15 个
+   `selection.json`、15 个 `checkpoint.pt` 和共 3750 行 `training.csv`。
+
+本轮产物与原始输出：
+
+- `experiments/radar_ship_v16n_basic_lr/`；
+- `experiments/radar_ship_v16n_stage2_rl_selection_stable_v1/`；
+- `experiments/radar_ship_v16n_stage2_rl_selection_stable_v1_trained_gcn/`；
+- `logs/v16n_baselines_2026-08-02.log`；
+- `logs/v16n_stable_rl_selection_2026-08-02.log`；
+- `logs/v16n_stable_rl_final_eval_2026-08-02.log`；
+- `logs/v16n_stable_trained_gcn_selection_2026-08-02.log`；
+- `logs/v16n_stable_trained_gcn_final_eval_2026-08-02.log`。
