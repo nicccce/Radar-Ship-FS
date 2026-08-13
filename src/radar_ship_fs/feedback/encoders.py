@@ -108,6 +108,50 @@ _GCN_ACTIVATIONS = {
 }
 
 
+# Radar feature ids are one-based in the source metadata. The physical-domain boundaries are the
+# six groups defined by the feature-generation pipeline; cleaned columns retain their original ids,
+# so the mapping remains valid after constant/duplicate removal.
+_RADAR_DOMAIN_ID_RANGES = (
+    (1, 20),  # time
+    (21, 31),  # frequency
+    (32, 38),  # time-frequency
+    (39, 46),  # nonlinear
+    (47, 48),  # fractional transform
+    (49, 75),  # polarimetric
+)
+
+
+def radar_feature_domains(context: "SelectionContext") -> tuple[int, ...]:
+    """Map cleaned radar columns to six physical-domain ids without using held-out values."""
+    metadata = context.split.train.metadata or {}
+    original_ids = metadata.get("final_feature_ids")
+    if original_ids is None:
+        raise ValueError("domain GCN requires radar metadata with final_feature_ids")
+    if len(original_ids) != context.n_features:
+        raise ValueError("radar final_feature_ids must align one-to-one with cleaned columns")
+
+    domains: list[int] = []
+    for value in original_ids:
+        feature_id = int(value)
+        matches = [
+            domain
+            for domain, (lower, upper) in enumerate(_RADAR_DOMAIN_ID_RANGES)
+            if lower <= feature_id <= upper
+        ]
+        if len(matches) != 1:
+            raise ValueError(f"radar feature id {feature_id} is outside the physical-domain metadata")
+        domains.append(matches[0])
+    return tuple(domains)
+
+
+def shuffled_domain_assignment(domains: Sequence[int], random_state: int) -> tuple[int, ...]:
+    """Deterministically permute memberships while preserving every domain's feature count."""
+    seed = np.random.SeedSequence([int(random_state) & 0xFFFFFFFF, 0xD06A1])
+    rng = np.random.default_rng(seed)
+    shuffled = rng.permutation(np.asarray(tuple(domains), dtype=np.int64))
+    return tuple(int(value) for value in shuffled)
+
+
 def _augmented_adjacency(graph, mix: float) -> torch.Tensor:
     """Existing graph semantics, represented once as a float32 constant tensor."""
     correlation = graph.correlation
@@ -198,6 +242,73 @@ class TrainableGCNBatchStateEncoder(nn.Module):
         return torch.stack(rows)
 
 
+class DomainHierarchyGCNBatchStateEncoder(TrainableGCNBatchStateEncoder):
+    """Residual two-stage physical-domain virtual-node block over the existing GCN.
+
+    The inherited encoder first computes the unchanged correlation + Decision-Tree GCN rows. The
+    selected rows are then mean-pooled into six virtual domain nodes and sent back to every feature
+    in that domain. connect_domains adds a normalized complete graph between the six virtual
+    nodes before the return path. Two scalar residual gates start at zero, so every variant is
+    exactly the existing trained GCN at initialization and can opt into hierarchy during learning.
+    """
+
+    trainable = True
+
+    def __init__(
+        self,
+        output_dim: int,
+        layers: int,
+        activation: str,
+        random_state: int,
+        *,
+        feature_domains: Sequence[int],
+        connect_domains: bool,
+    ) -> None:
+        super().__init__(output_dim, layers, activation, random_state)
+        domains = tuple(int(value) for value in feature_domains)
+        if not domains:
+            raise ValueError("domain GCN requires at least one feature-domain assignment")
+        if min(domains) < 0 or max(domains) >= len(_RADAR_DOMAIN_ID_RANGES):
+            raise ValueError("feature-domain assignments must be ids in [0, 5]")
+        if set(domains) != set(range(len(_RADAR_DOMAIN_ID_RANGES))):
+            raise ValueError("domain GCN requires all six physical domains to be represented")
+        self.connect_domains = bool(connect_domains)
+        self.n_domains = len(_RADAR_DOMAIN_ID_RANGES)
+        self.register_buffer("feature_domains", torch.tensor(domains, dtype=torch.long))
+        # tanh keeps both residual paths bounded and permits suppression as well as amplification.
+        self.membership_gate = nn.Parameter(torch.zeros((), dtype=torch.float32))
+        self.inter_domain_gate = nn.Parameter(torch.zeros((), dtype=torch.float32))
+
+    def _encode_one(self, subset: tuple[int, ...], context: "SelectionContext") -> torch.Tensor:
+        base = super()._encode_one(subset, context)
+        if self.feature_domains.numel() != context.n_features:
+            raise ValueError("feature-domain assignments do not match the current feature count")
+
+        chosen = tuple(sorted({int(value) for value in subset}))
+        selected_index = torch.tensor(chosen, dtype=torch.long)
+        selected_domains = self.feature_domains[selected_index]
+        selected_rows = base[selected_index]
+
+        domain_sums = torch.zeros((self.n_domains, self.dimension), dtype=base.dtype)
+        domain_sums = domain_sums.index_add(0, selected_domains, selected_rows)
+        domain_counts = torch.zeros(self.n_domains, dtype=base.dtype)
+        domain_counts = domain_counts.index_add(
+            0,
+            selected_domains,
+            torch.ones(len(chosen), dtype=base.dtype),
+        )
+        domain_rows = domain_sums / domain_counts.clamp_min(1.0).unsqueeze(1)
+
+        if self.connect_domains:
+            other_domain_mean = (domain_rows.sum(dim=0, keepdim=True) - domain_rows) / float(
+                self.n_domains - 1
+            )
+            domain_rows = domain_rows + torch.tanh(self.inter_domain_gate) * other_domain_mean
+
+        feature_context = domain_rows[self.feature_domains]
+        return base + torch.tanh(self.membership_gate) * feature_context
+
+
 def build_batch_encoder(name: str, context: "SelectionContext") -> BatchStateEncoder:
     if name == "minimal":
         return MinimalBatchStateEncoder()
@@ -210,6 +321,19 @@ def build_batch_encoder(name: str, context: "SelectionContext") -> BatchStateEnc
             layers=context.config.gcn_layers,
             activation=context.config.activation,
             random_state=seed,
+        )
+    if name in {"domain_node_gcn", "domain_clique_gcn", "shuffled_domain_clique_gcn"}:
+        seed = int(context.rng.numpy.integers(0, 2**32))
+        domains = radar_feature_domains(context)
+        if name == "shuffled_domain_clique_gcn":
+            domains = shuffled_domain_assignment(domains, seed)
+        return DomainHierarchyGCNBatchStateEncoder(
+            output_dim=context.config.gcn_hidden_dim,
+            layers=context.config.gcn_layers,
+            activation=context.config.activation,
+            random_state=seed,
+            feature_domains=domains,
+            connect_domains=name != "domain_node_gcn",
         )
     raise ValueError(f"unknown stable encoder {name!r}")
 

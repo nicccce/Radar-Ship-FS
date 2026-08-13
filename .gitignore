@@ -24,6 +24,7 @@ dist/
 build/
 *.egg
 temp/
+tmp/
 
 # Local data: keep directory guides, ignore actual datasets.
 data/*

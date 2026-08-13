@@ -16,4 +16,10 @@ replay、target 同步等参数必须修改 TOML，使 manifest 中的规范化�
 `configs/v16n/stable_trained_gcn.toml`；它保持相同数据和训练超参数，只限定 GCN 方法并使用
 独立结果根目录。stable 结果不能与 `legacy_v1` 历史产物混放。
 
+物理域虚拟节点的四臂筛选使用 `configs/v16n/domain_gcn_screen.toml`。它是无硬预算的结构识别
+实验；`configs/v16n/domain_gcn_k32_diagnostic.toml` 仅保留 K=32 归档失效的复现配置，不能用于
+模型优劣结论。冻结选择的 source-test 汇总命令为：
+
+`PYTHONPATH=src python src/run_domain_gcn_screen_eval.py --config configs/v16n/domain_gcn_screen.toml`
+
 旧的无 TOML stage2 配置与命令保留用于历史复现，不再作为新实验的扩展点。

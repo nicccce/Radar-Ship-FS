@@ -174,7 +174,14 @@ class ExperimentSpec:
         names = [method.name for method in enabled]
         if len(names) != len(set(names)):
             raise ValueError("enabled method names must be unique")
-        allowed_encoders = {"minimal", "fixed", "trained_gcn"}
+        allowed_encoders = {
+            "minimal",
+            "fixed",
+            "trained_gcn",
+            "domain_node_gcn",
+            "domain_clique_gcn",
+            "shuffled_domain_clique_gcn",
+        }
         for method in enabled:
             if method.encoder not in allowed_encoders:
                 raise ValueError(

@@ -1485,3 +1485,69 @@ source test 上评价。`胜/平/负` 和 DT 差值均以同 seed 的 MI-32 为�
 - `logs/v16n_stable_rl_final_eval_2026-08-02.log`；
 - `logs/v16n_stable_trained_gcn_selection_2026-08-02.log`；
 - `logs/v16n_stable_trained_gcn_final_eval_2026-08-02.log`。
+## 2026-08-12 v16n：物理域虚拟节点层级 GCN 筛选
+
+### 实验前快照与实现
+
+实验前先将现有 v16n trained-GCN 配置、正式结果和数据分析报告提交为
+`59abcf1 (docs: record v16n trained GCN baseline)`。随后只在 stable_v1 编码器侧增加层级残差块，
+保留原有 signed-Pearson 全连接图和 Decision-Tree 有向边不变：
+
+1. `gcn_base`：原始 Full-IRFS trained-GCN；
+2. `gcn_domain_node`：把所选特征按六个物理域平均汇聚到域虚拟节点，再回传到域内特征；
+3. `gcn_domain_clique`：在 2 的基础上，让六个域节点以归一化完全图交换信息；
+4. `gcn_domain_clique_shuffled`：保持六组规模不变但随机打乱归属，作为参数量相同的负对照。
+
+层级输出为 `base + tanh(membership_gate) * domain_context`；域间完全图另有
+`inter_domain_gate`。两个门均从 0 初始化，因此四臂具有相同的初始 GCN 输出和权重，新增结构只能
+通过训练逐步启用。分组由清洗元数据中的原始 1-based 特征编号映射，未读取 source test 特征值。
+
+### K=32 归档诊断
+
+第一版 `configs/v16n/domain_gcn_k32_diagnostic.toml` 把 `feature_budget=32` 直接交给现有
+`SelectionArchive`。seed 42 的四臂均运行 120 步后，最终都返回了完全相同的 32 维子集和
+0.916840 inner-CV Accuracy；但全轨迹各自最高分候选已经不同：
+
+| 方法 | 全轨迹最高分候选维数 | 最高 inner-CV DT Accuracy |
+|---|---:|---:|
+| GCN base | 42 | 0.932747 |
+| Domain node | 47 | 0.931213 |
+| Domain clique | 47 | 0.931213 |
+| Shuffled-domain clique | 43 | 0.926595 |
+
+原因是多智能体联合投票在训练后主要产生 39–47 维候选，而预算归档器只拒绝超预算候选，并不把动作
+投影为 K 维；因此它只能保留四臂尚未分化时的早期 32 维候选。该矩阵在 seed 42 完成后停止，不能
+作为 K=32 下的模型结论。诊断产物保留在
+`experiments/radar_ship_v16n_domain_gcn_screen/`；若以后要求严格 K，应修改动作生成/投影，而不
+应继续使用“超预算后丢弃”的归档策略。
+
+### 无预算结构识别矩阵
+
+正式筛选使用 `configs/v16n/domain_gcn_screen.toml`：seeds 42–44，四臂各 120 步，5 折 inner-CV
+DT，其他 DQN、advisor、reward 和初始化完全配对。12 个选择全部完成并冻结后，才由
+`src/run_domain_gcn_screen_eval.py` 一次性读取 source test，分别评价新拟合的 DT 和
+StandardScaler + LR。该 source-test 结果仅用于本次预先定义的 go/no-go 判断，后续不得据此调参后
+重复宣称独立验证。
+
+| 方法 | 平均维数 | inner-CV DT | Test DT BAcc | 相对 base | Test LR BAcc | 相对 base |
+|---|---:|---:|---:|---:|---:|---:|
+| GCN base | 44.0 ± 2.0 | 0.92916 ± 0.00419 | **0.92399 ± 0.00513** | 0 | **0.91589 ± 0.00394** | 0 |
+| Domain node | 46.0 ± 1.0 | 0.92745 ± 0.00326 | 0.90787 ± 0.00441 | −0.01611（0/3 胜） | 0.90859 ± 0.00690 | −0.00730（0/3 胜） |
+| Domain clique | 42.7 ± 5.9 | 0.92762 ± 0.00312 | 0.90702 ± 0.00294 | −0.01696（0/3 胜） | 0.91137 ± 0.00996 | −0.00452（1/3 胜） |
+| Shuffled-domain clique | 44.3 ± 1.5 | 0.92779 ± 0.00207 | 0.91655 ± 0.00398 | −0.00744（0/3 胜） | 0.91479 ± 0.00377 | −0.00110（1/3 胜） |
+
+真实域两臂的 DT BAcc 在三个 seed 上均低于原始 GCN；随机域对照反而优于真实域两臂，但仍未胜过
+原始 GCN。平均 `membership_gate` 为 −0.00192（domain node）、−0.00196（domain clique）和
+−0.00240（random）；domain clique 的平均 `inter_domain_gate` 仅 0.00665。模型几乎关闭了新增
+层级通路，与 held-out 负结果一致。
+
+**Go/no-go 结论：no-go。** 本轮没有证据支持“物理域虚拟节点”优于当前相关图 + 树边 GCN，也没有
+证据支持域节点两两相连。按预设停止规则，不扩大到更多 seed，不在 source test 结果上继续调门控。
+若后续重新研究，应优先尝试与物理域不同的统计相关簇或组级奖励/动作约束，并使用新的独立数据版本
+验证。
+
+核验：新增与相关回归测试为 `20 passed`；实现完成后的全量回归为
+`133 passed in 52.62s`，定稿后最终回归为 `133 passed in 47.98s`。正式矩阵包含 12 个
+`selection.json`、12 个 `checkpoint.pt` 和
+12 × 120 行训练轨迹；汇总位于
+`experiments/radar_ship_v16n_domain_gcn_screen_unbudgeted/evaluation/summary.json`。
