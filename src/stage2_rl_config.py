@@ -16,7 +16,7 @@ from pathlib import Path
 # 数据和重复实验设置。
 DATASET = "radar_ship"
 DATA_DIR = "../dataset"
-DATA_VERSION = "v16n"
+DATA_VERSION = "v16n_2x_noise"
 EXPECTED_CLEAN_FEATURES = 65
 SEEDS = (42, 43, 44, 45, 46)
 
