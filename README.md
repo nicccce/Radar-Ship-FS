@@ -152,10 +152,6 @@ conda run --no-capture-output -n dl-lab env PYTHONPATH=src python -u -m radar_sh
 conda run -n dl-lab env PYTHONPATH=src python src/run_domain_gcn_screen_eval.py --config configs/v16n/run_experiments.toml
 ```
 
-### 4. 核心分析与模型选择洞见
-- **mi_greedy 的绝对统治力**：由于特征反馈是由决策树打分的，极度纯净且无冗余的少量特征（仅 ~10 个）能极大提高树模型的测试表现。`mi_greedy` 自底向上的前向贪心完美避开了互信息高分特征之间的“高度冗余陷阱”，在独立测试集拿到了 `0.9229` 的高分。
-- **PPO 的局部最优陷阱与 Warm-Start**：PPO 使用 Swap（一进一出）探索。如果在极小预算（如 `k=12`）下，用冗余度极高的“互信息 Top-12”作为初始热启动掩码，PPO 单次替换特征很难跳出高冗余带来的局部最优。因此在使用 PPO 解决该类问题时，应给予适度的探索时间（64 eps）并避免过于强制的小预算硬约束。
-- **树模型 vs 线性模型**：削减特征后，Decision Tree 性能大幅提升（消除噪声干扰）；而 Logistic Regression 的性能会由于有效维度锐减而跌落（线性模型不怕冗余，只怕信号丢失）。评估时需结合实际工程落地模型来抉择方法。
 
 ## 数据约定
 
