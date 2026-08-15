@@ -120,71 +120,42 @@ stable 内核使用 joint replay、批量状态编码、Double DQN、独立 targ
 下面的 `src/run_stage2_*.py` 是冻结的 `legacy_v1` 历史复现入口。它们继续使用原目录、签名和
 完成产物，不再承接 stable 训练功能；新代码也通过架构测试禁止导入这些脚本。
 
-## 阶段 2 雷达 RL 正式实验
+## v16n_2x_noise 核心实验与最新结论
 
-当前 `stage2_rl_config.py` 选择 v15：先合并两个 SVM-light 文件的 696 行，再按每个 seed 分层随机划分为 556 行
-development 和 140 行 test。RL 只在 development 内做固定分层 5 折交叉验证：每个候选特征集
-训练 5 棵 Decision Tree，并用 5 个留出折准确率均值作为选择分数。test 不参与特征选择。
+当前项目已升级到 `v16n_2x_noise` 数据集，采用完全统一的 TOML 配置和 `ExperimentRunner` 进行管理，彻底废弃了硬编码参数的老旧执行脚本。
 
-RL 搜索运行 MARLFS、Full-IRFS-fixed 和 Full-IRFS-trained-GCN。每种方法运行 250 步，
-Hybrid Teaching 的零基边界为 83/166：`[0,83)` 使用 relevance trainer，`[83,166)` 使用
-DT-importance trainer，`[166,250)` 不再使用 trainer；候选分数相同时选择特征更少的一组：
+### 1. 核心运行协议
+- **数据切分**：合并读取数据后，每个随机种子 (seed=42-46) 划分 1843 行做 development (训练/验证)，461 行做独立 test。
+- **特征选择 (Stage 1)**：所有强化学习方法 (PPO, DQN) 和部分需要内部反馈的传统方法 (mi_greedy, dt_rfe) 仅在 development 的 1843 行内部进行 5 折交叉验证（内部折叠计算决策树准确率作为 Reward 或反馈）。绝对禁止偷看 461 行的独立 test 集。
+- **独立验证 (Stage 2)**：特征集筛选并冻结后，由统一评价脚本 `src/run_domain_gcn_screen_eval.py` 统筹读取。在 development 集合上重新拟合 Decision Tree 和 Logistic Regression 模型，最后在独立的 461 行 test 集上计算泛化指标。
 
+### 2. 模型矩阵与配置
+主配置文件位于 `configs/v16n/run_experiments.toml`，默认包含了完整的模型对比矩阵：
+- **强化学习方法**：
+  - `gnn_ppo` (单智能体 PPO，极速热启动收敛，泛化效果最佳的 RL)
+  - `full_irfs_fixed` (单智能体 DQN)
+  - `marlfs` (经典多智能体)
+- **传统基线 (Baselines)**：
+  - `mi_greedy` (互信息排序后前向贪心，表现极强的过滤式基线)
+  - `dt_rfe` (基于决策树的递归特征消除)
+  - `mrmr` (最大相关最小冗余)
+  - `l1` (L1正则化嵌入)
+  - `relevance_topk` (单纯互信息排序 Top-K)
+
+### 3. 一键执行命令
+运行所有在 TOML 配置文件里激活的方法：
 ```bash
-conda run --no-capture-output -n dl-lab python src/run_stage2_rl_selection.py
+conda run --no-capture-output -n dl-lab env PYTHONPATH=src python -u -m radar_ship_fs.experiment run --config configs/v16n/run_experiments.toml
 ```
-
-RL 完成并保存特征编号后，独立入口用全部 development 训练最终 Decision Tree，并在 test 上评价
-All Features、KBest-33、三种 RL 前面筛选出的特征，以及与 Full-IRFS-fixed 同规模的 KBest：
-
+运行完成后，执行统一特征评估，计算最终的 DT 和 LR 测试集精度：
 ```bash
-conda run --no-capture-output -n dl-lab python src/run_stage2_dt_test.py
+conda run -n dl-lab env PYTHONPATH=src python src/run_domain_gcn_screen_eval.py --config configs/v16n/run_experiments.toml
 ```
 
-如需补充 Logistic Regression 评价，可在选择完成后单独运行；它只读取已保存的特征，不会重新运行 RL：
-
-```bash
-conda run --no-capture-output -n dl-lab python src/run_stage2_rl_final_lr.py
-```
-
-针对 RL 子集经常超过 MI-33 预算的问题，另有独立的超预算惩罚扫描。它固定
-`beta=0.02`、`k=33`，扫描 `lambda={0.01, 0.025, 0.05, 0.1}`：
-
-```text
-J(S) = Accuracy_CV(S) - beta * Corr(S) - lambda * max(0, (|S| - 33) / 33)
-```
-
-RL 学习期间仍可访问超过 33 个特征的子集，但最终只在初始 33 特征与 250 步轨迹中
-`|S| <= 33` 的候选里按 inner-CV DT Accuracy 选最优（同分取更少特征）。一键入口会先完成
-全部 4×4 个密封搜索并预检产物，随后才解封 outer test：
-
-```bash
-conda run --no-capture-output -n dl-lab python src/run_stage2_budget_sweep.py
-```
-
-纯 Accuracy 控制（`beta=0、lambda=0`，但保留最终 `|S|<=33` 的公平筛选）使用独立入口：
-
-```bash
-conda run --no-capture-output -n dl-lab python src/run_stage2_accuracy_only.py
-```
-
-当前 v15 的 baseline、主三方法和旧数据优选点可用统一入口断点续跑：
-
-```bash
-conda run --no-capture-output -n dl-lab python src/run_v15_key_experiments.py
-```
-
-
-这些正式入口都不接收命令行实验参数：
-
-- 配置统一写在 `src/stage2_rl_config.py`；
-- 每个 seed 的 140 行随机 test 在搜索期保持密封；
-- 搜索入口不导入 `lr_final`，只用 development 内部 5 折 DT 分数；
-- DT 评价入口不会重新运行 RL，只读取 `selection.json` 中前面筛选出的特征编号；
-- KBest 的 Mutual Information 只在该 seed 的 development 上拟合；
-- 每个方法保存 250 步原始轨迹、逐折准确率、均值/标准差和子集变化，并生成跨 seed 聚合 CSV。
-
-重复执行搜索入口时，与当前代码内配置完全匹配的已完成方法会被跳过；配置签名不一致时不会误用旧产物。
+### 4. 核心分析与模型选择洞见
+- **mi_greedy 的绝对统治力**：由于特征反馈是由决策树打分的，极度纯净且无冗余的少量特征（仅 ~10 个）能极大提高树模型的测试表现。`mi_greedy` 自底向上的前向贪心完美避开了互信息高分特征之间的“高度冗余陷阱”，在独立测试集拿到了 `0.9229` 的高分。
+- **PPO 的局部最优陷阱与 Warm-Start**：PPO 使用 Swap（一进一出）探索。如果在极小预算（如 `k=12`）下，用冗余度极高的“互信息 Top-12”作为初始热启动掩码，PPO 单次替换特征很难跳出高冗余带来的局部最优。因此在使用 PPO 解决该类问题时，应给予适度的探索时间（64 eps）并避免过于强制的小预算硬约束。
+- **树模型 vs 线性模型**：削减特征后，Decision Tree 性能大幅提升（消除噪声干扰）；而 Logistic Regression 的性能会由于有效维度锐减而跌落（线性模型不怕冗余，只怕信号丢失）。评估时需结合实际工程落地模型来抉择方法。
 
 ## 数据约定
 

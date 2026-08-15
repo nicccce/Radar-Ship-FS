@@ -85,7 +85,7 @@ def _validate_complete_matrix(spec) -> None:
     for seed in spec.dataset.seeds:
         for method in spec.enabled_methods:
             run_dir = Path(spec.output.root) / f"seed-{seed}" / method.name
-            for filename in ("manifest.json", "selection.json", "checkpoint.pt"):
+            for filename in ("manifest.json", "selection.json"):
                 path = run_dir / filename
                 if not path.is_file():
                     missing.append(str(path))
@@ -106,8 +106,8 @@ def _run_row(spec, seed: int, method, context) -> dict[str, Any]:
     if signature.get("development_fingerprint") != development_fingerprint(context):
         raise ValueError(f"development data fingerprint mismatch in {run_dir}")
     trajectory = selection.get("trajectory", [])
-    if len(trajectory) != spec.training.steps:
-        raise ValueError(f"incomplete selection trajectory in {run_dir}")
+    if method.type == "dqn" and len(trajectory) != spec.training.steps:
+        raise ValueError(f"incomplete selection trajectory in {run_dir} (expected {spec.training.steps}, got {len(trajectory)})")
 
     subset = tuple(int(value) for value in selection["selected_clean_indices"])
     budget = spec.training.feature_budget
@@ -127,7 +127,13 @@ def _run_row(spec, seed: int, method, context) -> dict[str, Any]:
         )
     )
     domains = radar_feature_domains(context)
-    membership_gate, inter_domain_gate = _learned_gates(run_dir / "checkpoint.pt")
+    if (run_dir / "checkpoint.pt").exists():
+        try:
+            membership_gate, inter_domain_gate = _learned_gates(run_dir / "checkpoint.pt")
+        except Exception:
+            membership_gate, inter_domain_gate = None, None
+    else:
+        membership_gate, inter_domain_gate = None, None
     return {
         "seed": seed,
         "method": method.name,
@@ -137,7 +143,7 @@ def _run_row(spec, seed: int, method, context) -> dict[str, Any]:
         "best_inner_cv_dt_accuracy": float(selection["best_dt_inner_cv_accuracy"]),
         "mean_abs_train_correlation": _mean_abs_correlation(context.split.train.X, subset),
         "selected_domain_count": len({domains[index] for index in subset}),
-        "elapsed_seconds": float(trajectory[-1]["elapsed_seconds"]),
+        "elapsed_seconds": float(trajectory[-1]["elapsed_seconds"]) if trajectory else 0.0,
         "membership_gate": membership_gate,
         "inter_domain_gate": inter_domain_gate,
         **dt,

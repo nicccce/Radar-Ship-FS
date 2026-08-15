@@ -145,6 +145,11 @@ class ExperimentRunner:
             return existing
         artifacts.write_manifest(spec=self.spec, method=method, seed=seed, context=context, identity=identity)
 
+        if method.type == "classical":
+            return self._run_classical(context, seed, method, artifacts, identity)
+        elif method.type == "ppo":
+            return self._run_ppo(context, seed, method, artifacts, identity)
+
         reward_name, advisor_name = _method_defaults(method)
         encoder = build_batch_encoder(method.encoder, context)
         reward = build_reward_vector(reward_name)
@@ -197,6 +202,53 @@ class ExperimentRunner:
             f"best={payload['best_dt_inner_cv_accuracy']:.4f}",
             flush=True,
         )
+        return payload
+
+    def _run_classical(self, context, seed: int, method, artifacts, identity):
+        from methods.l1 import L1Selector
+        from methods.mrmr import MRMRSelector
+        from methods.relevance_topk import RelevanceTopKSelector
+        from methods.dt_rfe import DTImportanceEliminator
+        from radar_ship_fs.selection.types import StableTrainingResult
+
+        selectors = {
+            "l1": L1Selector,
+            "mrmr": MRMRSelector,
+            "relevance_topk": RelevanceTopKSelector,
+            "dt_rfe": DTImportanceEliminator,
+        }
+        if method.encoder not in selectors:
+            raise ValueError(f"Unknown classical method {method.encoder}")
+        
+        selector = selectors[method.encoder]()
+        selection = selector.select(context)
+        initial_accuracy = context.probe.probe(selection.selected, context.split.validation).accuracy
+        
+        result = StableTrainingResult(
+            selection=selection,
+            metrics=(),
+            initial_subset=selection.selected,
+            initial_accuracy=initial_accuracy,
+            learner_updates=0,
+            rejected_transitions=0,
+        )
+        payload = artifacts.write_result(result, identity=identity, context=context)
+        print(f"seed={seed} method={method.name} done features={len(selection.selected)} acc={initial_accuracy:.4f}", flush=True)
+        return payload
+
+    def _run_ppo(self, context, seed: int, method, artifacts, identity):
+        from radar_ship_fs.ppo.run_session import run_ppo_session
+        
+        result = run_ppo_session(
+            context=context,
+            config=self.spec,
+            seed=seed,
+            method_name=method.name,
+            artifacts=artifacts,
+            identity=identity,
+        )
+        payload = artifacts.write_result(result, identity=identity, context=context)
+        print(f"seed={seed} method={method.name} done features={len(result.selection.selected)} best={payload['best_dt_inner_cv_accuracy']:.4f}", flush=True)
         return payload
 
     def run(self, *, resume: bool | None = None) -> list[dict]:

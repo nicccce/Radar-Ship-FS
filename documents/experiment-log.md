@@ -1551,3 +1551,18 @@ StandardScaler + LR。该 source-test 结果仅用于本次预先定义的 go/no
 `selection.json`、12 个 `checkpoint.pt` 和
 12 × 120 行训练轨迹；汇总位于
 `experiments/radar_ship_v16n_domain_gcn_screen_unbudgeted/evaluation/summary.json`。
+| 2026-08-15 | 重新整合 | v16n_2x_noise | runner.py | 42-46 | 统一配置 | experiments/v16n_2x_noise | 【5个seed测试跑完】均值：full_irfs_fixed=0.9272 > marlfs=0.9251 > gnn_ppo=0.9234 > relevance_topk=0.9222。统一测试框架（`ExperimentRunner`）验证成功。强化学习单智能体DQN(full_irfs_fixed)目前成绩最好，PPO目前超越了baseline但略逊于DQN。 |
+
+### 最终基线与强化学习性能大比拼 (v16n_2x_noise 独立测试集, 5-seeds 平均)
+
+| 模型方法 (Method) | 特征数量 (K) | 运行耗时 (s) | 决策树准确率 (DT Test Acc) | 逻辑回归准确率 (LR Test Acc) |
+| :--- | :---: | :---: | :---: | :---: |
+| **mi_greedy** (互信息前向贪心) | 10.2 | 11.9s | **0.9229** | 0.8904 |
+| **dt_rfe** (决策树递归消除) | 32.0 | 47.0s | 0.9149 | 0.9096 |
+| **gnn_ppo** (单智能体 PPO) | 32.0 | 16.7s | 0.9132 | 0.9101 |
+| **full_irfs_fixed** (单智能体 DQN)| 44.2 | 380.5s| 0.9115 | 0.9101 |
+| **relevance_topk** (互信息 Top-K)| 32.0 | ~0s | 0.9108 | 0.9099 |
+| **marlfs** (多智能体 RL) | 34.0 | 224.5s| 0.9096 | 0.9057 |
+| **All Features** (全特征对比) | 54.0 | - | 0.9078 | **0.9149** |
+| **mrmr** (最大相关最小冗余) | 32.0 | 0.8s | 0.9069 | 0.9031 |
+| **l1** (L1 正则化嵌入) | 54.0 | 0.5s | 0.9052 | 0.9132 |

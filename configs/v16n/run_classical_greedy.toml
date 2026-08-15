@@ -1,0 +1,34 @@
+schema_version = 1
+algorithm_version = "stable_v1"
+
+[dataset]
+name = "radar_ship"
+version = "v16n_2x_noise"
+data_dir = "../dataset"
+seeds = [42, 43, 44, 45, 46]
+validation_fraction = 0.25
+inner_cv_folds = 5
+expected_clean_features = 65
+
+[training]
+steps = 250
+feature_budget = 32
+
+[[methods]]
+name = "dt_rfe"
+type = "classical"
+encoder = "dt_rfe"
+
+[[methods]]
+name = "mrmr"
+type = "classical"
+encoder = "mrmr"
+
+[[methods]]
+name = "l1"
+type = "classical"
+encoder = "l1"
+
+[output]
+root = "experiments/v16n_2x_noise"
+resume = true

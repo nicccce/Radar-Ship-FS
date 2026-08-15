@@ -72,11 +72,36 @@ class TrainingSpec:
 
 
 @dataclass(frozen=True)
+class PPOSpec:
+    episodes: int = 64
+    episodes_per_update: int = 16
+    learning_rate: float = 3e-4
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    clip_ratio: float = 0.2
+    ppo_epochs: int = 4
+    minibatch_size: int = 256
+    entropy_coef: float = 0.003
+    value_coef: float = 0.5
+    max_grad_norm: float = 0.5
+    target_kl: float = 0.03
+    hidden_dim: int = 64
+    actor_prior_scale: float = 2.0
+    correlation_penalty: float = 0.02
+    sparsity_bonus: float = 0.002
+    shaping_scale: float = 0.1
+    terminal_reward_scale: float = 10.0
+    greedy_rollouts: int = 1
+    feature_budget: int = 32
+
+
+@dataclass(frozen=True)
 class MethodSpec:
     """One named method in the experiment matrix."""
 
     name: str
     encoder: str
+    type: str = "dqn"  # "dqn", "ppo", or "classical"
     advisor: str | None = None
     reward: str | None = None
     enabled: bool = True
@@ -98,6 +123,7 @@ class ExperimentSpec:
     algorithm_version: str
     dataset: DatasetSpec
     training: TrainingSpec
+    ppo: PPOSpec
     methods: tuple[MethodSpec, ...]
     output: OutputSpec
 
@@ -183,7 +209,9 @@ class ExperimentSpec:
             "shuffled_domain_clique_gcn",
         }
         for method in enabled:
-            if method.encoder not in allowed_encoders:
+            if method.type not in {"dqn", "ppo", "classical"}:
+                raise ValueError(f"method {method.name!r} has unsupported type {method.type!r}")
+            if method.type == "dqn" and method.encoder not in allowed_encoders:
                 raise ValueError(
                     f"method {method.name!r} has unknown encoder {method.encoder!r}; "
                     f"expected one of {sorted(allowed_encoders)}"
@@ -256,11 +284,11 @@ def load_experiment_spec(path: str | Path) -> ExperimentSpec:
     source = Path(path)
     with source.open("rb") as handle:
         raw = tomllib.load(handle)
-    top_known = {"schema_version", "algorithm_version", "dataset", "training", "methods", "output"}
+    top_known = {"schema_version", "algorithm_version", "dataset", "training", "ppo", "methods", "output"}
     unknown = set(raw) - top_known
     if unknown:
         raise ValueError(f"unknown top-level experiment fields: {sorted(unknown)}")
-    missing = top_known - set(raw)
+    missing = top_known - set(raw) - {"ppo"}  # ppo is optional
     if missing:
         raise ValueError(f"missing top-level experiment fields: {sorted(missing)}")
 
@@ -276,11 +304,14 @@ def load_experiment_spec(path: str | Path) -> ExperimentSpec:
     if not isinstance(methods_raw, list):
         raise ValueError("[[methods]] must be an array of tables")
 
+    ppo_values = dict(raw.get("ppo", {}))
+
     spec = ExperimentSpec(
         schema_version=int(raw["schema_version"]),
         algorithm_version=str(raw["algorithm_version"]),
         dataset=_strict_dataclass(DatasetSpec, dataset_values, "dataset"),
         training=_strict_dataclass(TrainingSpec, training_values, "training"),
+        ppo=_strict_dataclass(PPOSpec, ppo_values, "ppo"),
         methods=tuple(_strict_dataclass(MethodSpec, item, "methods") for item in methods_raw),
         output=_strict_dataclass(OutputSpec, raw["output"], "output"),
     )
