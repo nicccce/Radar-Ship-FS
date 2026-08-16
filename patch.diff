@@ -1,0 +1,57 @@
+--- src/radar_ship_fs/experiment/config.py
++++ src/radar_ship_fs/experiment/config.py
+@@ -73,2 +73,12 @@
+ 
++@dataclass(frozen=True)
++class PPOSpec:
++    episodes: int = 64
++    episodes_per_update: int = 16
++    learning_rate: float = 3e-4
++    gamma: float = 0.99
++    gae_lambda: float = 0.95
++    clip_ratio: float = 0.2
++    ppo_epochs: int = 4
++    minibatch_size: int = 256
++    entropy_coef: float = 0.003
++    value_coef: float = 0.5
++    max_grad_norm: float = 0.5
++    target_kl: float = 0.03
++    hidden_dim: int = 64
++    actor_prior_scale: float = 2.0
++    correlation_penalty: float = 0.02
++    sparsity_bonus: float = 0.002
++    shaping_scale: float = 0.1
++    terminal_reward_scale: float = 10.0
++    greedy_rollouts: int = 1
+ 
+ @dataclass(frozen=True)
+@@ -77,2 +87,3 @@
+     name: str
++    type: str = "dqn"  # dqn, ppo, classical
+     encoder: str
+@@ -98,2 +109,3 @@
+     dataset: DatasetSpec
++    ppo: PPOSpec = PPOSpec()
+     training: TrainingSpec
+@@ -176,14 +188,18 @@
+         allowed_encoders = {
+             "minimal",
+             "fixed",
+             "trained_gcn",
+             "domain_node_gcn",
+             "domain_clique_gcn",
+             "shuffled_domain_clique_gcn",
++            "mrmr",
++            "l1",
++            "relevance_topk",
++            "dt_rfe",
+         }
+         for method in enabled:
+-            if method.encoder not in allowed_encoders:
++            if method.type == "dqn" and method.encoder not in allowed_encoders:
+                 raise ValueError(
+                     f"method {method.name!r} has unknown encoder {method.encoder!r}; "
+                     f"expected one of {sorted(allowed_encoders)}"
+                 )
++            if method.type not in {"dqn", "ppo", "classical"}:
++                raise ValueError(f"method {method.name!r} has unsupported type {method.type!r}")

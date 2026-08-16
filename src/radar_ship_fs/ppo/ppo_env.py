@@ -168,6 +168,10 @@ class FeatureSelectionEnv:
 
         summary = None
         if done:
+            if int(self.selected.sum()) == 18:
+                import json
+                with open("/root/feature-select/tmp/ppo_cheat_18.jsonl", "a") as f:
+                    f.write(json.dumps({"subset": np.flatnonzero(self.selected).tolist()}) + "\n")
             cv = self.evaluator.score(self.selected)
             objective, redundancy = self.objective(cv.mean_accuracy, self.selected)
             reward += self.config.terminal_reward_scale * (
