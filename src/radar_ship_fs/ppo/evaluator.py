@@ -41,18 +41,14 @@ class SubsetEvaluator:
         self.seed = int(seed)
         self.n_jobs = int(n_jobs)
         self.row_indices = (
-            np.arange(X.shape[0], dtype=int)
-            if row_indices is None
-            else np.asarray(row_indices, dtype=int)
+            np.arange(X.shape[0], dtype=int) if row_indices is None else np.asarray(row_indices, dtype=int)
         )
         splitter = RepeatedStratifiedKFold(
             n_splits=folds,
             n_repeats=repeats,
             random_state=seed,
         )
-        self.folds = tuple(
-            (fit.astype(int), held.astype(int)) for fit, held in splitter.split(X, y)
-        )
+        self.folds = tuple((fit.astype(int), held.astype(int)) for fit, held in splitter.split(X, y))
         self._cache: dict[bytes, CVResult] = {}
 
     @property
@@ -119,3 +115,48 @@ def evaluate_tree_on_test(
         "test_f1": float(f1_score(y_test, prediction, pos_label=1, zero_division=0)),
         "test_roc_auc": float(roc_auc_score(y_test, probability)),
     }
+
+
+class ValidationEvaluator:
+    """Fixed validation scorer with subset memoization."""
+
+    def __init__(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray,
+        y_val: np.ndarray,
+        *,
+        seed: int,
+    ) -> None:
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_val = X_val
+        self.y_val = y_val
+        self.seed = int(seed)
+        self._cache: dict[bytes, CVResult] = {}
+
+    @property
+    def evaluated_subsets(self) -> int:
+        return len(self._cache)
+
+    def score(self, mask: np.ndarray) -> CVResult:
+        mask = np.asarray(mask, dtype=bool)
+        indices = np.flatnonzero(mask)
+        if indices.size == 0:
+            raise ValueError("cannot evaluate an empty feature subset")
+        key = np.packbits(mask).tobytes()
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        model = DecisionTreeClassifier(random_state=self.seed)
+        model.fit(self.X_train[:, indices], self.y_train)
+        acc = float(model.score(self.X_val[:, indices], self.y_val))
+
+        result = CVResult(acc, (acc,))
+        self._cache[key] = result
+        return result
+
+    def fold_indices(self) -> list[dict[str, list[int]]]:
+        return []
