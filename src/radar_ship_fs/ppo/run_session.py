@@ -1,16 +1,35 @@
 import time
-from typing import Any
+
 import numpy as np
 import torch
+
+from harness.contract import StepRecord, make_selection
+from radar_ship_fs.selection.types import StableTrainingResult, TrainingMetrics
+
 from .config import ExperimentConfig
+from .evaluator import SubsetEvaluator, ValidationEvaluator
+from .experiment import (
+    _candidate,
+    _candidate_from_summary,
+    _is_archive_better,
+    _is_better,
+    _run_episode,
+    _seed_everything,
+)
+from .ppo_agent import PPOAgent, RolloutBuffer
 from .ppo_env import FeatureSelectionEnv
 from .ppo_graph import build_feature_graph
 from .ppo_model import GraphActorCritic
-from .ppo_agent import PPOAgent, RolloutBuffer
-from .experiment import _candidate, _candidate_from_summary, _is_better, _is_archive_better, _run_episode
-from radar_ship_fs.selection.types import StableTrainingResult, TrainingMetrics
-from harness.contract import make_selection, StepRecord
-from .evaluator import SubsetEvaluator
+
+
+def _random_initial_mask(n_features: int, feature_budget: int, seed: int) -> np.ndarray:
+    if not 1 <= feature_budget <= n_features:
+        raise ValueError("require 1 <= feature_budget <= n_features")
+    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 0x50504F]))
+    mask = np.zeros(n_features, dtype=bool)
+    mask[rng.choice(n_features, size=feature_budget, replace=False)] = True
+    return mask
+
 
 def run_ppo_session(
     *,
@@ -21,8 +40,9 @@ def run_ppo_session(
     artifacts,
     identity: dict,
 ) -> StableTrainingResult:
+    _seed_everything(seed)
     spec = config
-    
+
     ppo_config = ExperimentConfig(
         seed=seed,
         graph_threshold=0.8,
@@ -58,85 +78,97 @@ def run_ppo_session(
 
     X_train = context.split.train.X
     y_train = context.split.train.y
-    domains = np.zeros(X_train.shape[1], dtype=int)
-    
+    from sklearn.model_selection import train_test_split
+
+    X_train_cv, X_val, y_train_cv, y_val = train_test_split(
+        X_train, y_train, test_size=0.2, stratify=y_train, random_state=seed
+    )
+    domains = np.zeros(X_train_cv.shape[1], dtype=int)
+
     # We use validation_seed and tree_seed from the provided rng if possible, or just seed
     graph = build_feature_graph(
-        X_train,
-        y_train,
+        X_train_cv,
+        y_train_cv,
         domains,
         threshold=0.8,
         seed=seed,
         tree_seed=seed,
     )
-    
+
     reward_evaluator = SubsetEvaluator(
-        X_train,
-        y_train,
+        X_train_cv,
+        y_train_cv,
         seed=seed,
         folds=spec.dataset.inner_cv_folds,
         n_jobs=4,
     )
-    
-    audit_evaluator = SubsetEvaluator(
-        X_train,
-        y_train,
+
+    audit_evaluator = ValidationEvaluator(
+        X_train_cv,
+        y_train_cv,
+        X_val,
+        y_val,
         seed=seed,
-        folds=spec.dataset.inner_cv_folds,
-        n_jobs=4,
-        repeats=5,
     )
-    
-    all_mask = np.ones(X_train.shape[1], dtype=bool)
-    from sklearn.feature_selection import mutual_info_classif
-    random_state = int(context.rng.numpy.integers(0, 2**32))
-    relevance = mutual_info_classif(X_train, y_train, random_state=random_state)
-    ranked_features = np.argsort(-relevance, kind="stable").tolist()
-    
-    mi_mask = np.zeros(X_train.shape[1], dtype=bool)
-    best_acc = -1.0
-    for f in ranked_features:
-        test_mask = mi_mask.copy()
-        test_mask[f] = True
-        acc = reward_evaluator.score(test_mask).mean_accuracy
-        if acc > best_acc:
-            mi_mask = test_mask
-            best_acc = acc
-            
-    # Pad to feature_budget to satisfy env constraint
-    current_count = int(mi_mask.sum())
-    if current_count < ppo_config.feature_budget:
-        for f in ranked_features:
-            if not mi_mask[f]:
-                mi_mask[f] = True
-                current_count += 1
-                if current_count == ppo_config.feature_budget:
-                    break
-    elif current_count > ppo_config.feature_budget:
-        # Should rarely happen, but truncate if needed
-        removed = 0
-        for f in reversed(ranked_features):
-            if mi_mask[f]:
-                mi_mask[f] = False
-                removed += 1
-                if current_count - removed == ppo_config.feature_budget:
-                    break
-    
+
+    if spec.ppo.initialization == "random":
+        initial_mask = _random_initial_mask(
+            X_train_cv.shape[1],
+            ppo_config.feature_budget,
+            seed,
+        )
+        initial_origin = "random_start"
+    else:
+        from sklearn.feature_selection import mutual_info_classif
+
+        random_state = int(context.rng.numpy.integers(0, 2**32))
+        relevance = mutual_info_classif(X_train_cv, y_train_cv, random_state=random_state)
+        ranked_features = np.argsort(-relevance, kind="stable").tolist()
+
+        initial_mask = np.zeros(X_train_cv.shape[1], dtype=bool)
+        best_acc = -1.0
+        for feature in ranked_features:
+            test_mask = initial_mask.copy()
+            test_mask[feature] = True
+            accuracy = reward_evaluator.score(test_mask).mean_accuracy
+            if accuracy > best_acc:
+                initial_mask = test_mask
+                best_acc = accuracy
+
+        current_count = int(initial_mask.sum())
+        if current_count < ppo_config.feature_budget:
+            for feature in ranked_features:
+                if not initial_mask[feature]:
+                    initial_mask[feature] = True
+                    current_count += 1
+                    if current_count == ppo_config.feature_budget:
+                        break
+        elif current_count > ppo_config.feature_budget:
+            removed = 0
+            for feature in reversed(ranked_features):
+                if initial_mask[feature]:
+                    initial_mask[feature] = False
+                    removed += 1
+                    if current_count - removed == ppo_config.feature_budget:
+                        break
+        initial_origin = "mi_warm_start"
+
     reward_best = _candidate(
-        mi_mask,
-        reward_evaluator.score(mi_mask),
+        initial_mask,
+        reward_evaluator.score(initial_mask),
         graph,
         ppo_config,
-        "mi_warm_start",
+        initial_origin,
     )
     best = _candidate(
-        mi_mask,
-        audit_evaluator.score(mi_mask),
+        initial_mask,
+        audit_evaluator.score(initial_mask),
         graph,
         ppo_config,
-        "mi_warm_start",
+        initial_origin,
     )
-    
+    initial_accuracy = reward_best.cv_accuracy
+
     model = GraphActorCritic(
         graph,
         ppo_config.hidden_dim,
@@ -148,48 +180,38 @@ def run_ppo_session(
         reward_evaluator,
         ppo_config,
         baseline_objective=reward_best.objective,
-        initial_mask=mi_mask,
+        initial_mask=initial_mask,
     )
-    
+
     completed = 0
     update_index = 0
     metrics = []
-    
+
     while completed < spec.ppo.episodes:
         buffer = RolloutBuffer.empty()
         batch_best = None
-        batch_best_summary = None
         batch_size = min(spec.ppo.episodes_per_update, spec.ppo.episodes - completed)
         for offset in range(batch_size):
             episode = completed + offset + 1
-            summary = _run_episode(
-                env, agent, deterministic=False, buffer=buffer
-            )
-            reward_current = _candidate_from_summary(
-                summary, f"train_episode_{episode}"
-            )
+            summary = _run_episode(env, agent, deterministic=False, buffer=buffer)
+            reward_current = _candidate_from_summary(summary, f"train_episode_{episode}")
             if _is_better(reward_current, reward_best):
                 reward_best = reward_current
             if batch_best is None or _is_better(reward_current, batch_best):
                 batch_best = reward_current
-                batch_best_summary = summary
-                
+
         completed += batch_size
         update_index += 1
         agent.set_learning_rate(1.0 - completed / spec.ppo.episodes)
         update_metrics = agent.update(buffer)
-        
-        checkpoint_summary = _run_episode(
-            env, agent, deterministic=True
-        )
-        checkpoint_reward = _candidate_from_summary(
-            checkpoint_summary, f"checkpoint_{update_index}"
-        )
-        
+
+        checkpoint_summary = _run_episode(env, agent, deterministic=True)
+        checkpoint_reward = _candidate_from_summary(checkpoint_summary, f"checkpoint_{update_index}")
+
         proposal_reward = checkpoint_reward
         if batch_best and _is_better(batch_best, proposal_reward):
             proposal_reward = batch_best
-            
+
         proposal_audit = _candidate(
             proposal_reward.mask,
             audit_evaluator.score(proposal_reward.mask),
@@ -197,40 +219,40 @@ def run_ppo_session(
             ppo_config,
             proposal_reward.origin,
         )
-        if _is_archive_better(
-            proposal_audit, best, 0.001
-        ):
+        if _is_archive_better(proposal_audit, best, 0.001):
             best = proposal_audit
-            
+
         # Log metric for runner
         elapsed = time.perf_counter() - started
-        metrics.append(TrainingMetrics(
-            step=update_index,
-            subset=tuple(np.flatnonzero(best.mask)),
-            subset_size=best.selected_count,
-            accuracy=best.cv_accuracy,
-            best_accuracy=best.cv_accuracy,
-            epsilon=0.0,
-            proposed_select_count=0,
-            transition_applied=True,
-            reward_min=0.0,
-            reward_mean=0.0,
-            reward_max=0.0,
-            replay_size=0,
-            update_performed=True,
-            loss=update_metrics["policy_loss"],
-            td_error_mean=0.0,
-            td_error_max=0.0,
-            q_mean=0.0,
-            q_std=0.0,
-            q_max=0.0,
-            target_q_mean=0.0,
-            gradient_norm=0.0,
-            target_synced=False,
-            advisor_override_count=0,
-            elapsed_seconds=elapsed,
-        ))
-        
+        metrics.append(
+            TrainingMetrics(
+                step=update_index,
+                subset=tuple(np.flatnonzero(best.mask)),
+                subset_size=best.selected_count,
+                accuracy=best.cv_accuracy,
+                best_accuracy=best.cv_accuracy,
+                epsilon=0.0,
+                proposed_select_count=0,
+                transition_applied=True,
+                reward_min=0.0,
+                reward_mean=0.0,
+                reward_max=0.0,
+                replay_size=0,
+                update_performed=True,
+                loss=update_metrics["policy_loss"],
+                td_error_mean=0.0,
+                td_error_max=0.0,
+                q_mean=0.0,
+                q_std=0.0,
+                q_max=0.0,
+                target_q_mean=0.0,
+                gradient_norm=0.0,
+                target_synced=False,
+                advisor_override_count=0,
+                elapsed_seconds=elapsed,
+            )
+        )
+
     for rollout in range(1, ppo_config.greedy_rollouts + 1):
         summary = _run_episode(env, agent, deterministic=True)
         audit_current = _candidate(
@@ -244,16 +266,14 @@ def run_ppo_session(
             best = audit_current
 
     best_indices = tuple(np.flatnonzero(best.mask))
-    per_step = tuple(
-        StepRecord(subset=m.subset, accuracy=m.accuracy) for m in metrics
-    )
+    per_step = tuple(StepRecord(subset=m.subset, accuracy=m.accuracy) for m in metrics)
     selection = make_selection(best_indices, per_step=per_step)
-    
+
     return StableTrainingResult(
         selection=selection,
         metrics=tuple(metrics),
-        initial_subset=tuple(np.flatnonzero(mi_mask)),
-        initial_accuracy=reward_best.cv_accuracy,
+        initial_subset=tuple(np.flatnonzero(initial_mask)),
+        initial_accuracy=initial_accuracy,
         learner_updates=update_index,
         rejected_transitions=0,
     )
