@@ -16,11 +16,11 @@ from sklearn.model_selection import train_test_split
 
 from .config import ExperimentConfig
 from .data import DOMAIN_NAMES, RadarData, load_radar_data
+from .evaluator import CVResult, SubsetEvaluator, ValidationEvaluator, evaluate_tree_on_test
+from .ppo_agent import PPOAgent, RolloutBuffer
 from .ppo_env import EpisodeSummary, FeatureSelectionEnv
-from .evaluator import CVResult, SubsetEvaluator, evaluate_tree_on_test
 from .ppo_graph import FeatureGraph, build_feature_graph
 from .ppo_model import GraphActorCritic
-from .ppo_agent import PPOAgent, RolloutBuffer
 
 
 @dataclass(frozen=True)
@@ -92,7 +92,7 @@ def _reference_development(
     data: RadarData,
     validation_seed: int,
     validation_fraction: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Recreate Radar-Ship-FS's train-then-validation development row order."""
     source_indices = np.arange(data.X_development.shape[0])
     fit_indices, validation_indices = train_test_split(
@@ -102,7 +102,15 @@ def _reference_development(
         stratify=data.y_development,
     )
     order = np.concatenate((fit_indices, validation_indices))
-    return data.X_development[order], data.y_development[order], order
+    return (
+        data.X_development[fit_indices],
+        data.y_development[fit_indices],
+        data.X_development[validation_indices],
+        data.y_development[validation_indices],
+        data.X_development[order],
+        data.y_development[order],
+        order,
+    )
 
 
 def _mask_from_top_scores(scores: np.ndarray, k: int) -> np.ndarray:
@@ -176,7 +184,7 @@ def _selection_record(
     graph: FeatureGraph,
     config: ExperimentConfig,
     reward_evaluator: SubsetEvaluator,
-    audit_evaluator: SubsetEvaluator,
+    audit_evaluator: ValidationEvaluator,
     reward_baselines: dict[str, Candidate],
     audit_baselines: dict[str, Candidate],
     device: torch.device,
@@ -198,33 +206,21 @@ def _selection_record(
     return {
         "protocol": {
             "selection_rows": "all source-train rows",
-            "development_order": (
-                "reference train split followed by validation split"
-            ),
-            "policy_reward_score": (
-                f"fixed stratified {config.inner_cv_folds}-fold DecisionTree accuracy"
-            ),
+            "development_order": ("reference train split followed by validation split"),
+            "policy_reward_score": (f"fixed stratified {config.inner_cv_folds}-fold DecisionTree accuracy"),
             "archive_selection_score": (
                 f"independent {config.audit_cv_repeats}x"
                 f"{config.inner_cv_folds}-fold repeated stratified "
                 "DecisionTree accuracy; never used as PPO reward"
             ),
-            "source_test_role": (
-                "sealed until this file and checkpoint are written"
-            ),
+            "source_test_role": ("sealed until this file and checkpoint are written"),
             "preprocessing_fit_scope": "source_train_only",
             "mi_warm_start": True,
-            "action_space": (
-                f"{graph.n_features} feature-node actions plus one STOP action"
-            ),
+            "action_space": (f"{graph.n_features} feature-node actions plus one STOP action"),
             "search_mode": config.search_mode,
-            "maximum_local_swaps": (
-                config.max_swaps if config.search_mode == "swap" else None
-            ),
+            "maximum_local_swaps": (config.max_swaps if config.search_mode == "swap" else None),
             "actor_prior": "centered mutual-information rank",
-            "archive_replacement_rule": (
-                f"audit CV gain >= {config.archive_min_cv_gain:.4f}"
-            ),
+            "archive_replacement_rule": (f"audit CV gain >= {config.archive_min_cv_gain:.4f}"),
         },
         "config": config.as_dict(),
         "runtime": {
@@ -243,9 +239,7 @@ def _selection_record(
         "graph": {
             "nodes": graph.n_features,
             "signed_correlation_edges_without_self_loops": graph.edge_count,
-            "tree_dependency_edges_without_self_loops": (
-                graph.dependency_edge_count
-            ),
+            "tree_dependency_edges_without_self_loops": (graph.dependency_edge_count),
             "absolute_pearson_threshold": graph.threshold,
             "physical_domains": list(DOMAIN_NAMES),
             "channels": [
@@ -254,24 +248,14 @@ def _selection_record(
             ],
             "fit_scope": "source_train_only",
         },
-        "baselines_reward_cv": {
-            name: _metrics(value) for name, value in reward_baselines.items()
-        },
-        "baselines_audit_cv": {
-            name: _metrics(value) for name, value in audit_baselines.items()
-        },
+        "baselines_reward_cv": {name: _metrics(value) for name, value in reward_baselines.items()},
+        "baselines_audit_cv": {name: _metrics(value) for name, value in audit_baselines.items()},
         "best_candidate": {
             "origin": candidate.origin,
             "selected_clean_indices": indices.astype(int).tolist(),
-            "selected_original_feature_ids": (
-                data.original_feature_ids[indices].astype(int).tolist()
-            ),
-            "selected_feature_names": [
-                data.feature_names[index] for index in indices
-            ],
-            "selected_domains": [
-                DOMAIN_NAMES[int(data.domains[index])] for index in indices
-            ],
+            "selected_original_feature_ids": (data.original_feature_ids[indices].astype(int).tolist()),
+            "selected_feature_names": [data.feature_names[index] for index in indices],
+            "selected_domains": [DOMAIN_NAMES[int(data.domains[index])] for index in indices],
             "selected_count": candidate.selected_count,
             "compression_ratio": 1.0 - candidate.selected_count / graph.n_features,
             "reward_cv_dt_accuracy": reward_selected.cv_accuracy,
@@ -304,9 +288,7 @@ def _run_episode(
 ) -> EpisodeSummary:
     observation = env.reset()
     while True:
-        action, log_probability, value = agent.act(
-            observation, deterministic=deterministic
-        )
+        action, log_probability, value = agent.act(observation, deterministic=deterministic)
         reward, done, summary = env.step(action)
         if buffer is not None:
             buffer.add(
@@ -319,9 +301,7 @@ def _run_episode(
             )
         if done:
             if summary is None:
-                raise RuntimeError(
-                    "terminal step did not return an episode summary"
-                )
+                raise RuntimeError("terminal step did not return an episode summary")
             return summary
         observation = env.observation()
 
@@ -340,14 +320,10 @@ def _history_row(
         "episode": episode,
         "selected_count": reward_candidate.selected_count,
         "reward_cv_dt_accuracy": reward_candidate.cv_accuracy,
-        "audit_cv_dt_accuracy": (
-            "" if audit_candidate is None else audit_candidate.cv_accuracy
-        ),
+        "audit_cv_dt_accuracy": ("" if audit_candidate is None else audit_candidate.cv_accuracy),
         "mean_abs_correlation": reward_candidate.redundancy,
         "reward_objective": reward_candidate.objective,
-        "audit_objective": (
-            "" if audit_candidate is None else audit_candidate.objective
-        ),
+        "audit_objective": ("" if audit_candidate is None else audit_candidate.objective),
         "episode_reward": summary.total_reward,
         "best_audit_objective": best.objective,
         "best_origin": best.origin,
@@ -361,45 +337,41 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
     data = load_radar_data(config.data_dir, config.data_version)
     config.validate(data.n_features)
 
-    validation_seed, tree_seed, final_tree_seed = _reference_random_states(
-        config.seed
-    )
+    validation_seed, tree_seed, final_tree_seed = _reference_random_states(config.seed)
     audit_seed = _audit_seed(config.seed)
-    X_development, y_development, development_order = _reference_development(
-        data,
-        validation_seed,
-        config.reference_validation_fraction,
+    X_train_cv, y_train_cv, X_val, y_val, X_development, y_development, development_order = (
+        _reference_development(
+            data,
+            validation_seed,
+            config.reference_validation_fraction,
+        )
     )
     graph = build_feature_graph(
-        X_development,
-        y_development,
+        X_train_cv,
+        y_train_cv,
         data.domains,
         threshold=config.ppo_graph_threshold,
         seed=config.seed,
         tree_seed=tree_seed,
     )
     reward_evaluator = SubsetEvaluator(
-        X_development,
-        y_development,
+        X_train_cv,
+        y_train_cv,
         seed=tree_seed,
         folds=config.inner_cv_folds,
         n_jobs=config.cv_jobs,
-        row_indices=development_order,
+        row_indices=development_order[: len(X_train_cv)],
     )
-    audit_evaluator = SubsetEvaluator(
-        X_development,
-        y_development,
+    audit_evaluator = ValidationEvaluator(
+        X_train_cv,
+        y_train_cv,
+        X_val,
+        y_val,
         seed=audit_seed,
-        folds=config.inner_cv_folds,
-        n_jobs=config.cv_jobs,
-        repeats=config.audit_cv_repeats,
-        row_indices=development_order,
     )
 
     all_mask = np.ones(data.n_features, dtype=bool)
-    mi_mask = _mask_from_top_scores(
-        graph.mutual_information, config.feature_budget
-    )
+    mi_mask = _mask_from_top_scores(graph.mutual_information, config.feature_budget)
     reward_baselines = {
         "all_features": _candidate(
             all_mask,
@@ -462,9 +434,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         reward_evaluator,
         config,
         baseline_objective=reward_baselines["mi_kbest"].objective,
-        initial_mask=(
-            mi_mask if config.search_mode == "swap" else None
-        ),
+        initial_mask=(mi_mask if config.search_mode == "swap" else None),
     )
 
     episode_rows: list[dict[str, Any]] = []
@@ -487,9 +457,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
                 deterministic=False,
                 buffer=buffer,
             )
-            reward_current = _candidate_from_summary(
-                summary, f"train_episode_{episode}"
-            )
+            reward_current = _candidate_from_summary(summary, f"train_episode_{episode}")
             if _is_better(reward_current, reward_best):
                 reward_best = reward_current
             if batch_best is None or _is_better(reward_current, batch_best):
@@ -685,13 +653,9 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         "methods": final_rows,
         "gnn_ppo_delta_test_accuracy": {
             "vs_all_features": float(
-                selected_metrics["test_accuracy"]
-                - final_rows["all_features"]["test_accuracy"]
+                selected_metrics["test_accuracy"] - final_rows["all_features"]["test_accuracy"]
             ),
-            "vs_mi_kbest": float(
-                selected_metrics["test_accuracy"]
-                - final_rows["mi_kbest"]["test_accuracy"]
-            ),
+            "vs_mi_kbest": float(selected_metrics["test_accuracy"] - final_rows["mi_kbest"]["test_accuracy"]),
         },
         "total_elapsed_seconds": time.perf_counter() - started,
     }
@@ -699,8 +663,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
     print(
         "final DT test: "
         + ", ".join(
-            f"{name}={metrics['test_accuracy']:.4f} "
-            f"(k={metrics['selected_count']})"
+            f"{name}={metrics['test_accuracy']:.4f} (k={metrics['selected_count']})"
             for name, metrics in final_rows.items()
         ),
         flush=True,
