@@ -73,6 +73,7 @@ class TrainingSpec:
 
 @dataclass(frozen=True)
 class PPOSpec:
+    initialization: str = "mi_greedy"
     episodes: int = 64
     episodes_per_update: int = 16
     learning_rate: float = 3e-4
@@ -193,6 +194,9 @@ class ExperimentSpec:
             raise ValueError("feature_budget must be positive")
         if cfg.over_budget_penalty_weight < 0.0:
             raise ValueError("over_budget_penalty_weight must be non-negative")
+
+        if self.ppo.initialization not in {"mi_greedy", "random"}:
+            raise ValueError("ppo.initialization must be mi_greedy or random")
 
         enabled = [method for method in self.methods if method.enabled]
         if not enabled:
