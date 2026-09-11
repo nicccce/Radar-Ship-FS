@@ -90,10 +90,15 @@ class PPOSpec:
     actor_prior_scale: float = 2.0
     correlation_penalty: float = 0.02
     sparsity_bonus: float = 0.002
+    feature_id_seed: int = 0
+    feature_id_reward_weight: float = 0.1
+    archive_accuracy_tolerance: float = 0.001
     shaping_scale: float = 0.1
     terminal_reward_scale: float = 10.0
     greedy_rollouts: int = 1
     feature_budget: int = 32
+    max_swaps: int = 2
+    swap_candidate_pool: int = 4
 
 
 @dataclass(frozen=True)
@@ -197,6 +202,14 @@ class ExperimentSpec:
 
         if self.ppo.initialization not in {"mi_greedy", "random"}:
             raise ValueError("ppo.initialization must be mi_greedy or random")
+        if self.ppo.feature_id_reward_weight < 0.0:
+            raise ValueError("ppo.feature_id_reward_weight must be non-negative")
+        if self.ppo.archive_accuracy_tolerance < 0.0:
+            raise ValueError("ppo.archive_accuracy_tolerance must be non-negative")
+        if self.ppo.max_swaps <= 0:
+            raise ValueError("ppo.max_swaps must be positive")
+        if self.ppo.swap_candidate_pool <= 0:
+            raise ValueError("ppo.swap_candidate_pool must be positive")
 
         enabled = [method for method in self.methods if method.enabled]
         if not enabled:

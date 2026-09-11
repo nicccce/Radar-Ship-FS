@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from .config import ExperimentConfig
 from .data import DOMAIN_NAMES, RadarData, load_radar_data
 from .evaluator import CVResult, SubsetEvaluator, ValidationEvaluator, evaluate_tree_on_test
+from .feature_ids import feature_id_score
 from .ppo_agent import PPOAgent, RolloutBuffer
 from .ppo_env import EpisodeSummary, FeatureSelectionEnv
 from .ppo_graph import FeatureGraph, build_feature_graph
@@ -29,6 +30,7 @@ class Candidate:
     cv_accuracy: float
     fold_accuracies: tuple[float, ...]
     redundancy: float
+    feature_id_score: float
     objective: float
     origin: str
 
@@ -129,13 +131,17 @@ def _candidate(
 ) -> Candidate:
     redundancy = graph.redundancy(mask)
     sparsity = 1.0 - float(mask.sum()) / config.feature_budget
+    identifiers = graph.feature_ids
+    identifier_score = feature_id_score(mask, identifiers)
     objective = cv.mean_accuracy - config.correlation_penalty * redundancy
     objective += config.sparsity_bonus * sparsity
+    objective += config.feature_id_reward_weight * identifier_score
     return Candidate(
         mask.copy(),
         cv.mean_accuracy,
         cv.fold_accuracies,
         redundancy,
+        identifier_score,
         objective,
         origin,
     )
@@ -147,6 +153,7 @@ def _candidate_from_summary(summary: EpisodeSummary, origin: str) -> Candidate:
         summary.cv_accuracy,
         summary.fold_accuracies,
         summary.redundancy,
+        summary.feature_id_score,
         summary.objective,
         origin,
     )
@@ -164,8 +171,14 @@ def _is_archive_better(
     candidate: Candidate,
     incumbent: Candidate,
     minimum_cv_gain: float,
+    accuracy_tolerance: float,
 ) -> bool:
-    return candidate.cv_accuracy >= incumbent.cv_accuracy + minimum_cv_gain
+    accuracy_gain = candidate.cv_accuracy - incumbent.cv_accuracy
+    if accuracy_gain >= minimum_cv_gain:
+        return True
+    if abs(accuracy_gain) > accuracy_tolerance:
+        return False
+    return _is_better(candidate, incumbent)
 
 
 def _metrics(candidate: Candidate) -> dict[str, Any]:
@@ -174,6 +187,7 @@ def _metrics(candidate: Candidate) -> dict[str, Any]:
         "mean_accuracy": candidate.cv_accuracy,
         "fold_accuracies": list(candidate.fold_accuracies),
         "mean_abs_correlation": candidate.redundancy,
+        "feature_id_score": candidate.feature_id_score,
         "objective": candidate.objective,
     }
 
@@ -196,6 +210,7 @@ def _selection_record(
     development_order: np.ndarray,
 ) -> dict[str, Any]:
     indices = np.flatnonzero(candidate.mask)
+    identifiers = graph.feature_ids
     reward_selected = _candidate(
         candidate.mask,
         reward_evaluator.score(candidate.mask),
@@ -220,7 +235,10 @@ def _selection_record(
             "search_mode": config.search_mode,
             "maximum_local_swaps": (config.max_swaps if config.search_mode == "swap" else None),
             "actor_prior": "centered mutual-information rank",
-            "archive_replacement_rule": (f"audit CV gain >= {config.archive_min_cv_gain:.4f}"),
+            "archive_replacement_rule": (
+                f"audit CV gain >= {config.archive_min_cv_gain:.4f}, or objective gain "
+                f"within +/-{config.archive_accuracy_tolerance:.4f} audit accuracy"
+            ),
         },
         "config": config.as_dict(),
         "runtime": {
@@ -230,6 +248,7 @@ def _selection_record(
         },
         "random_states": {
             "experiment_seed": config.seed,
+            "feature_id_seed": config.feature_id_seed,
             "reference_validation_split_seed": validation_seed,
             "reward_cv_and_decision_tree_seed": tree_seed,
             "audit_cv_and_decision_tree_seed": audit_seed,
@@ -254,6 +273,7 @@ def _selection_record(
             "origin": candidate.origin,
             "selected_clean_indices": indices.astype(int).tolist(),
             "selected_original_feature_ids": (data.original_feature_ids[indices].astype(int).tolist()),
+            "selected_random_feature_ids": identifiers[indices].astype(int).tolist(),
             "selected_feature_names": [data.feature_names[index] for index in indices],
             "selected_domains": [DOMAIN_NAMES[int(data.domains[index])] for index in indices],
             "selected_count": candidate.selected_count,
@@ -263,6 +283,7 @@ def _selection_record(
             "inner_cv_dt_accuracy": candidate.cv_accuracy,
             "audit_fold_accuracies": list(candidate.fold_accuracies),
             "mean_abs_correlation": candidate.redundancy,
+            "feature_id_score": candidate.feature_id_score,
             "selection_objective": candidate.objective,
         },
         "cross_validation": {
@@ -322,6 +343,7 @@ def _history_row(
         "reward_cv_dt_accuracy": reward_candidate.cv_accuracy,
         "audit_cv_dt_accuracy": ("" if audit_candidate is None else audit_candidate.cv_accuracy),
         "mean_abs_correlation": reward_candidate.redundancy,
+        "feature_id_score": reward_candidate.feature_id_score,
         "reward_objective": reward_candidate.objective,
         "audit_objective": ("" if audit_candidate is None else audit_candidate.objective),
         "episode_reward": summary.total_reward,
@@ -350,9 +372,10 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         X_train_cv,
         y_train_cv,
         data.domains,
-        threshold=config.ppo_graph_threshold,
+        threshold=config.graph_threshold,
         seed=config.seed,
         tree_seed=tree_seed,
+        feature_id_seed=config.feature_id_seed,
     )
     reward_evaluator = SubsetEvaluator(
         X_train_cv,
@@ -506,6 +529,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
             proposal_audit,
             best,
             config.archive_min_cv_gain,
+            config.archive_accuracy_tolerance,
         ):
             best = proposal_audit
 
@@ -569,6 +593,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
             audit_current,
             best,
             config.archive_min_cv_gain,
+            config.archive_accuracy_tolerance,
         ):
             best = audit_current
         episode_rows.append(
@@ -611,6 +636,7 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         dependency_adjacency=graph.dependency_adjacency,
         signed_correlation=graph.signed_correlation,
         static_node_features=graph.static_node_features,
+        random_feature_ids=graph.feature_ids,
         original_feature_ids=data.original_feature_ids,
         domains=data.domains,
     )

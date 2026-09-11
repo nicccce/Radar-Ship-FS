@@ -13,9 +13,7 @@ class ExperimentConfig:
 
     data_dir: Path = field(default_factory=lambda: PROJECT_ROOT.parent / "dataset")
     data_version: str = "v16n"
-    output_dir: Path = field(
-        default_factory=lambda: PROJECT_ROOT / "outputs_optimized_topology_ppo"
-    )
+    output_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "outputs_optimized_topology_ppo")
     seed: int = 42
 
     reference_validation_fraction: float = 0.25
@@ -47,13 +45,16 @@ class ExperimentConfig:
 
     correlation_penalty: float = 0.02
     sparsity_bonus: float = 0.002
+    feature_id_seed: int = 0
+    feature_id_reward_weight: float = 0.1
+    archive_accuracy_tolerance: float = 0.001
     shaping_scale: float = 0.1
     terminal_reward_scale: float = 10.0
     archive_min_cv_gain: float = 0.003
     device: str = "auto"
 
     def validate(self, n_features: int | None = None) -> None:
-        if not 0.0 <= self.ppo_graph_threshold <= 1.0:
+        if not 0.0 <= self.graph_threshold <= 1.0:
             raise ValueError("graph_threshold must be in [0, 1]")
         if self.inner_cv_folds < 2 or self.audit_cv_repeats < 1 or self.cv_jobs < 1:
             raise ValueError("inner_cv_folds >= 2 and cv_jobs >= 1 are required")
@@ -67,8 +68,14 @@ class ExperimentConfig:
             raise ValueError("max_swaps must be positive")
         if self.swap_candidate_pool < 1:
             raise ValueError("swap_candidate_pool must be positive")
+        if self.feature_id_reward_weight < 0.0:
+            raise ValueError("feature_id_reward_weight must be non-negative")
+        if self.archive_accuracy_tolerance < 0.0:
+            raise ValueError("archive_accuracy_tolerance must be non-negative")
         if n_features is not None and self.feature_budget > n_features:
             raise ValueError("feature_budget cannot exceed the cleaned feature count")
+        if self.archive_min_cv_gain < 0.0:
+            raise ValueError("archive_min_cv_gain must be non-negative")
 
     def as_dict(self) -> dict[str, Any]:
         values = asdict(self)

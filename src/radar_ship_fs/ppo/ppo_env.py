@@ -8,6 +8,7 @@ import numpy as np
 
 from .config import ExperimentConfig
 from .evaluator import SubsetEvaluator
+from .feature_ids import feature_id_score, normalized_feature_ids
 from .ppo_graph import FeatureGraph
 
 
@@ -24,6 +25,7 @@ class EpisodeSummary:
     cv_accuracy: float
     fold_accuracies: tuple[float, ...]
     redundancy: float
+    feature_id_score: float
     objective: float
     total_reward: float
 
@@ -44,6 +46,7 @@ class FeatureSelectionEnv:
         self.evaluator = evaluator
         self.config = config
         self.baseline_objective = float(baseline_objective)
+        self.feature_ids = np.asarray(graph.feature_ids, dtype=np.int64).copy()
         self.stop_action = graph.n_features
 
         if config.search_mode == "swap":
@@ -83,7 +86,9 @@ class FeatureSelectionEnv:
         largest: bool,
     ) -> np.ndarray:
         indices = np.flatnonzero(eligible)
-        scores = self.ppo_graph.static_node_features[indices, :2].mean(axis=1)
+        quality = self.ppo_graph.static_node_features[indices, :2].mean(axis=1)
+        identifier_preference = normalized_feature_ids(self.feature_ids)[indices]
+        scores = quality + self.config.feature_id_reward_weight * identifier_preference
         order = np.argsort(scores, kind="stable")
         if largest:
             order = order[::-1]
@@ -128,13 +133,16 @@ class FeatureSelectionEnv:
         quality = self.ppo_graph.static_node_features[:, :2].mean(axis=1)
         relevance = float(quality[indices].sum() / self.config.feature_budget)
         coverage = float(indices.size / self.config.feature_budget)
-        return relevance - 0.25 * coverage * self.ppo_graph.redundancy(mask)
+        value = relevance - 0.25 * coverage * self.ppo_graph.redundancy(mask)
+        value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
+        return float(value)
 
     def objective(self, accuracy: float, mask: np.ndarray) -> tuple[float, float]:
         redundancy = self.ppo_graph.redundancy(mask)
         sparsity = 1.0 - float(mask.sum()) / self.config.feature_budget
         value = accuracy - self.config.correlation_penalty * redundancy
         value += self.config.sparsity_bonus * sparsity
+        value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
         return float(value), redundancy
 
     def _take_feature_action(self, action: int) -> bool:
@@ -155,9 +163,7 @@ class FeatureSelectionEnv:
     def step(self, action: int) -> tuple[float, bool, EpisodeSummary | None]:
         valid = self._valid_actions()
         if action < 0 or action >= valid.size or not valid[action]:
-            raise ValueError(
-                f"invalid action {action}; valid={np.flatnonzero(valid).tolist()}"
-            )
+            raise ValueError(f"invalid action {action}; valid={np.flatnonzero(valid).tolist()}")
 
         before = self._proxy(self.selected)
         done = action == self.stop_action
@@ -170,19 +176,19 @@ class FeatureSelectionEnv:
         if done:
             if int(self.selected.sum()) == 18:
                 import json
+
                 with open("/root/feature-select/tmp/ppo_cheat_18.jsonl", "a") as f:
                     f.write(json.dumps({"subset": np.flatnonzero(self.selected).tolist()}) + "\n")
             cv = self.evaluator.score(self.selected)
             objective, redundancy = self.objective(cv.mean_accuracy, self.selected)
-            reward += self.config.terminal_reward_scale * (
-                objective - self.baseline_objective
-            )
+            reward += self.config.terminal_reward_scale * (objective - self.baseline_objective)
             self.total_reward += reward
             summary = EpisodeSummary(
                 selected=self.selected.copy(),
                 cv_accuracy=cv.mean_accuracy,
                 fold_accuracies=cv.fold_accuracies,
                 redundancy=redundancy,
+                feature_id_score=feature_id_score(self.selected, self.feature_ids),
                 objective=objective,
                 total_reward=self.total_reward,
             )

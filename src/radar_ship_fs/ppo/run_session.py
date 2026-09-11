@@ -51,6 +51,8 @@ def run_ppo_session(
         cv_jobs=4,
         feature_budget=spec.ppo.feature_budget,
         search_mode="swap",
+        max_swaps=spec.ppo.max_swaps,
+        swap_candidate_pool=spec.ppo.swap_candidate_pool,
         episodes=spec.ppo.episodes,
         episodes_per_update=spec.ppo.episodes_per_update,
         greedy_rollouts=spec.ppo.greedy_rollouts,
@@ -68,6 +70,9 @@ def run_ppo_session(
         target_kl=spec.ppo.target_kl,
         correlation_penalty=spec.ppo.correlation_penalty,
         sparsity_bonus=spec.ppo.sparsity_bonus,
+        feature_id_seed=spec.ppo.feature_id_seed,
+        feature_id_reward_weight=spec.ppo.feature_id_reward_weight,
+        archive_accuracy_tolerance=spec.ppo.archive_accuracy_tolerance,
         shaping_scale=spec.ppo.shaping_scale,
         terminal_reward_scale=spec.ppo.terminal_reward_scale,
         archive_min_cv_gain=0.001,
@@ -93,6 +98,7 @@ def run_ppo_session(
         threshold=0.8,
         seed=seed,
         tree_seed=seed,
+        feature_id_seed=ppo_config.feature_id_seed,
     )
 
     reward_evaluator = SubsetEvaluator(
@@ -219,7 +225,7 @@ def run_ppo_session(
             ppo_config,
             proposal_reward.origin,
         )
-        if _is_archive_better(proposal_audit, best, 0.001):
+        if _is_archive_better(proposal_audit, best, 0.001, ppo_config.archive_accuracy_tolerance):
             best = proposal_audit
 
         # Log metric for runner
@@ -262,7 +268,7 @@ def run_ppo_session(
             ppo_config,
             f"final_greedy_{rollout}",
         )
-        if _is_archive_better(audit_current, best, 0.001):
+        if _is_archive_better(audit_current, best, 0.001, ppo_config.archive_accuracy_tolerance):
             best = audit_current
 
     best_indices = tuple(np.flatnonzero(best.mask))

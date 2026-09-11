@@ -11,6 +11,14 @@ python -m radar_ship_fs.experiment run --config configs/v16n/stable.toml --resum
 CLI 只允许选择配置、恢复策略，以及过滤 TOML 中已经声明的 seed/method。学习率、batch、
 replay、target 同步等参数必须修改 TOML，使 manifest 中的规范化配置与实际运行始终一致。
 
+PPO 默认用独立于训练 seed 的 `feature_id_seed = 0` 给特征生成固定随机编号，并将归一化编号
+作为节点静态特征。`feature_id_reward_weight = 0.1` 控制编号在 shaping/terminal reward 中的
+弱偏好；`archive_accuracy_tolerance = 0.001` 允许最终归档在准确率近似时用含编号项的 objective
+打破平局。跨 seed 对比时必须保持 `feature_id_seed` 一致；将 reward weight 设为 `0.0` 可关闭偏好。
+swap 模式下，编号偏好同时参与候选排序；`swap_candidate_pool` 控制每个半步可见的候选数，
+`max_swaps` 控制每个 episode 的最大替换次数。扩大二者会增加探索覆盖率和运行成本。
+
+
 默认矩阵启用 `marlfs/minimal` 和 `full_irfs_fixed/fixed`；`trained_gcn` 与 stable trainer 同步实现、
 同步测试，但默认关闭。需要单独运行 trained-GCN 时使用
 `configs/v16n/stable_trained_gcn.toml`；它保持相同数据和训练超参数，只限定 GCN 方法并使用
