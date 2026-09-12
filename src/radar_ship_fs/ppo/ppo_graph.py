@@ -90,6 +90,7 @@ def build_feature_graph(
     seed: int,
     tree_seed: int | None = None,
     feature_id_seed: int = 0,
+    include_feature_id_node_feature: bool = True,
 ) -> FeatureGraph:
     """Build train-only signed-correlation and Decision-Tree dependency channels."""
     signed = np.corrcoef(np.asarray(X_development, dtype=np.float64), rowvar=False)
@@ -119,16 +120,16 @@ def build_feature_graph(
     denominator = max(1.0, float(X_development.shape[1] - 1))
     domain_one_hot = np.eye(len(DOMAIN_NAMES), dtype=np.float32)[domains]
     feature_ids = random_feature_ids(X_development.shape[1], feature_id_seed)
-    static = np.column_stack(
-        (
-            _max_scale(relevance),
-            _max_scale(mi),
-            correlation_degree / denominator,
-            dependency_degree / denominator,
-            domain_one_hot,
-            normalized_feature_ids(feature_ids),
-        )
-    )
+    static_parts = [
+        _max_scale(relevance),
+        _max_scale(mi),
+        correlation_degree / denominator,
+        dependency_degree / denominator,
+        domain_one_hot,
+    ]
+    if include_feature_id_node_feature:
+        static_parts.append(normalized_feature_ids(feature_ids))
+    static = np.column_stack(static_parts)
 
     return FeatureGraph(
         signed_correlation=signed.astype(np.float32),

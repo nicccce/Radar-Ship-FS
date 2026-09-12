@@ -20,3 +20,13 @@ def target_size(n_features: int) -> int:
     half-feature-count sizing rule (REQ-006) shared by the fixed-size classical baselines.
     """
     return n_features // 2
+
+
+def configured_target_size(context) -> int:
+    """Return the declared K when present, otherwise the historical half-size."""
+    budget = getattr(context.config, "feature_budget", None)
+    if budget is None:
+        return target_size(context.n_features)
+    if not 1 <= int(budget) <= context.n_features:
+        raise ValueError("feature_budget must be within the cleaned feature count")
+    return int(budget)

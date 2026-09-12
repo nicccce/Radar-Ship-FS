@@ -196,7 +196,22 @@ class ExperimentRunner:
             ),
         )
         result = session.run(resume=resume)
-        payload = artifacts.write_result(result, identity=identity, context=context)
+        payload = artifacts.write_result(
+            result,
+            identity=identity,
+            context=context,
+            selection_score_protocol={
+                "data": "all source-train rows",
+                "candidate_score": (
+                    "fixed stratified inner-CV DecisionTree mean accuracy"
+                ),
+                "reward_objective": (
+                    "accuracy minus configured train-correlation penalty"
+                ),
+                "archive": "higher accuracy, then fewer features on exact tie",
+                "source_test_used": False,
+            },
+        )
         print(
             f"seed={seed} method={method.name} done features={len(result.selection.selected)} "
             f"best={payload['best_dt_inner_cv_accuracy']:.4f}",
@@ -205,10 +220,12 @@ class ExperimentRunner:
         return payload
 
     def _run_classical(self, context, seed: int, method, artifacts, identity):
+        from methods.dt_rfe import DTImportanceEliminator
+        from methods.forward_greedy import ForwardGreedySelector
         from methods.l1 import L1Selector
+        from methods.mi_greedy import MIGreedySelector, MIOrderedImprovementSelector
         from methods.mrmr import MRMRSelector
         from methods.relevance_topk import RelevanceTopKSelector
-        from methods.dt_rfe import DTImportanceEliminator
         from radar_ship_fs.selection.types import StableTrainingResult
 
         selectors = {
@@ -216,14 +233,17 @@ class ExperimentRunner:
             "mrmr": MRMRSelector,
             "relevance_topk": RelevanceTopKSelector,
             "dt_rfe": DTImportanceEliminator,
+            "mi_greedy": MIGreedySelector,
+            "mi_ordered_accept": MIOrderedImprovementSelector,
+            "forward_greedy": ForwardGreedySelector,
         }
         if method.encoder not in selectors:
             raise ValueError(f"Unknown classical method {method.encoder}")
-        
+
         selector = selectors[method.encoder]()
         selection = selector.select(context)
         initial_accuracy = context.probe.probe(selection.selected, context.split.validation).accuracy
-        
+
         result = StableTrainingResult(
             selection=selection,
             metrics=(),
@@ -232,13 +252,46 @@ class ExperimentRunner:
             learner_updates=0,
             rejected_transitions=0,
         )
-        payload = artifacts.write_result(result, identity=identity, context=context)
-        print(f"seed={seed} method={method.name} done features={len(selection.selected)} acc={initial_accuracy:.4f}", flush=True)
+        classical_protocols = {
+            "relevance_topk": (
+                "mutual-information ranking then fixed top-K; no subset-score search"
+            ),
+            "mi_greedy": (
+                "historical alias: one MI order, accept strict inner-CV improvement"
+            ),
+            "mi_ordered_accept": (
+                "one MI order, accept strict inner-CV improvement"
+            ),
+            "forward_greedy": (
+                "at each step score every remaining feature by inner-CV accuracy"
+            ),
+        }
+        payload = artifacts.write_result(
+            result,
+            identity=identity,
+            context=context,
+            selection_score_protocol={
+                "data": "all source-train rows",
+                "selection": classical_protocols.get(
+                    method.encoder,
+                    f"method-specific implementation: {method.encoder}",
+                ),
+                "reported_subset_score": (
+                    "fixed stratified inner-CV DecisionTree mean accuracy"
+                ),
+                "source_test_used": False,
+            },
+        )
+        print(
+            f"seed={seed} method={method.name} "
+            f"done features={len(selection.selected)} acc={initial_accuracy:.4f}",
+            flush=True,
+        )
         return payload
 
     def _run_ppo(self, context, seed: int, method, artifacts, identity):
         from radar_ship_fs.ppo.run_session import run_ppo_session
-        
+
         result = run_ppo_session(
             context=context,
             config=self.spec,
@@ -247,8 +300,38 @@ class ExperimentRunner:
             artifacts=artifacts,
             identity=identity,
         )
-        payload = artifacts.write_result(result, identity=identity, context=context)
-        print(f"seed={seed} method={method.name} done features={len(result.selection.selected)} best={payload['best_dt_inner_cv_accuracy']:.4f}", flush=True)
+        if self.spec.ppo.evaluation_protocol == "shared_inner_cv":
+            ppo_protocol = {
+                "data": "all source-train rows",
+                "reward_and_archive_score": (
+                    "same fixed stratified inner-CV DecisionTree mean accuracy as DQN"
+                ),
+                "archive": "higher accuracy, then fewer features on exact tie",
+                "source_test_used": False,
+            }
+        else:
+            ppo_protocol = {
+                "data": "legacy 80%/20% split of source-train",
+                "reward_score": (
+                    "DecisionTree inner-CV mean accuracy on the 80% search split"
+                ),
+                "archive_score": (
+                    "single DecisionTree holdout accuracy on the 20% split"
+                ),
+                "source_test_used": False,
+            }
+        payload = artifacts.write_result(
+            result,
+            identity=identity,
+            context=context,
+            selection_score_protocol=ppo_protocol,
+        )
+        print(
+            f"seed={seed} method={method.name} "
+            f"done features={len(result.selection.selected)} "
+            f"best={payload['best_dt_inner_cv_accuracy']:.4f}",
+            flush=True,
+        )
         return payload
 
     def run(self, *, resume: bool | None = None) -> list[dict]:

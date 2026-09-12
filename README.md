@@ -120,37 +120,25 @@ stable 内核使用 joint replay、批量状态编码、Double DQN、独立 targ
 下面的 `src/run_stage2_*.py` 是冻结的 `legacy_v1` 历史复现入口。它们继续使用原目录、签名和
 完成产物，不再承接 stable 训练功能；新代码也通过架构测试禁止导入这些脚本。
 
-## v16n_2x_noise 核心实验与最新结论
+## v16n_2x_noise 科研比较入口
 
-当前项目已升级到 `v16n_2x_noise` 数据集，采用完全统一的 TOML 配置和 `ExperimentRunner` 进行管理，彻底废弃了硬编码参数的老旧执行脚本。
+旧 `configs/v16n/run_experiments.toml` 与 `experiments/v16n_2x_noise/` 是 2026-08-15 协议的历史复现材料，不代表当前公平比较协议。旧 README 曾把本数据误写成 1843/461 行和 54 个有效特征；实际 source-train/source-test 为 3897/1671 行，原始 75 列经 source-train-only 清洗后为 65 列。source-test 已在历史开发中反复查看，后续只能称为复用诊断，不能重新宣称全新的独立验证。
 
-### 1. 核心运行协议
-- **数据切分**：合并读取数据后，每个随机种子 (seed=42-46) 划分 1843 行做 development (训练/验证)，461 行做独立 test。
-- **特征选择 (Stage 1)**：所有强化学习方法 (PPO, DQN) 和部分需要内部反馈的传统方法 (mi_greedy, dt_rfe) 仅在 development 的 1843 行内部进行 5 折交叉验证（内部折叠计算决策树准确率作为 Reward 或反馈）。绝对禁止偷看 461 行的独立 test 集。
-- **独立验证 (Stage 2)**：特征集筛选并冻结后，由统一评价脚本 `src/run_domain_gcn_screen_eval.py` 统筹读取。在 development 集合上重新拟合 Decision Tree 和 Logistic Regression 模型，最后在独立的 461 行 test 集上计算泛化指标。
+下一阶段冻结协议见 `documents/research-plan/protocol.md`，审计证据见 `documents/research-plan/01-protocol-audit.md`。新主配置是 `configs/v16n/research_baseline.toml`，它明确区分 MI Top-K、MI-ordered accept 和 exhaustive forward greedy，统一 DQN/PPO 的 source-train inner-CV scorer，并完全关闭随机 feature ID 对 PPO node feature、候选池、shaping 和 objective 的影响。
 
-### 2. 模型矩阵与配置
-主配置文件位于 `configs/v16n/run_experiments.toml`，默认包含了完整的模型对比矩阵：
-- **强化学习方法**：
-  - `gnn_ppo` (单智能体 PPO，极速热启动收敛，泛化效果最佳的 RL)
-  - `full_irfs_fixed` (单智能体 DQN)
-  - `marlfs` (经典多智能体)
-- **传统基线 (Baselines)**：
-  - `mi_greedy` (互信息排序后前向贪心，表现极强的过滤式基线)
-  - `dt_rfe` (基于决策树的递归特征消除)
-  - `mrmr` (最大相关最小冗余)
-  - `l1` (L1正则化嵌入)
-  - `relevance_topk` (单纯互信息排序 Top-K)
+先只解析配置：
 
-### 3. 一键执行命令
-运行所有在 TOML 配置文件里激活的方法：
 ```bash
-conda run --no-capture-output -n dl-lab env PYTHONPATH=src python -u -m radar_ship_fs.experiment run --config configs/v16n/run_experiments.toml
+conda run -n dl-lab env PYTHONPATH=src python -m radar_ship_fs.experiment dry-run --config configs/v16n/research_baseline.toml
 ```
-运行完成后，执行统一特征评估，计算最终的 DT 和 LR 测试集精度：
+
+正式运行前应再次核对数据 hash、代码状态和预算；不要把 `research_smoke.toml` 的输出用作科研结论。选择全部冻结后，最终评价入口为：
+
 ```bash
-conda run -n dl-lab env PYTHONPATH=src python src/run_domain_gcn_screen_eval.py --config configs/v16n/run_experiments.toml
+conda run -n dl-lab env PYTHONPATH=src python src/run_domain_gcn_screen_eval.py --config configs/v16n/research_baseline.toml
 ```
+
+该入口会把 source-test 明确标记为 `reused_source_test_diagnostic_only`。
 
 
 ## 数据约定

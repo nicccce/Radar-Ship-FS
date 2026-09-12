@@ -14,6 +14,8 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 
+from radar_ship_fs.feature_mapping import FeatureIndexMap
+
 from .config import ExperimentConfig
 from .data import DOMAIN_NAMES, RadarData, load_radar_data
 from .evaluator import CVResult, SubsetEvaluator, ValidationEvaluator, evaluate_tree_on_test
@@ -210,6 +212,7 @@ def _selection_record(
     development_order: np.ndarray,
 ) -> dict[str, Any]:
     indices = np.flatnonzero(candidate.mask)
+    feature_map = FeatureIndexMap(tuple(int(value) for value in data.original_feature_ids))
     identifiers = graph.feature_ids
     reward_selected = _candidate(
         candidate.mask,
@@ -272,7 +275,9 @@ def _selection_record(
         "best_candidate": {
             "origin": candidate.origin,
             "selected_clean_indices": indices.astype(int).tolist(),
-            "selected_original_feature_ids": (data.original_feature_ids[indices].astype(int).tolist()),
+            "selected_original_feature_ids": list(
+                feature_map.clean_indices_to_original_ids_1based(indices)
+            ),
             "selected_random_feature_ids": identifiers[indices].astype(int).tolist(),
             "selected_feature_names": [data.feature_names[index] for index in indices],
             "selected_domains": [DOMAIN_NAMES[int(data.domains[index])] for index in indices],

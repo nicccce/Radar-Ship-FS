@@ -25,6 +25,7 @@ import numpy as np
 from sklearn.feature_selection import mutual_info_classif
 
 from harness.contract import SelectionContext, SubsetSelection, make_selection
+from methods.sizing import configured_target_size
 
 
 class RelevanceTopKSelector:
@@ -47,7 +48,7 @@ class RelevanceTopKSelector:
         random_state = int(context.rng.numpy.integers(0, 2**32))
         relevance = mutual_info_classif(train.X, train.y, random_state=random_state)
 
-        k = context.n_features // 2
+        k = configured_target_size(context)
         # Descending relevance; stable sort over index-ordered scores breaks ties by
         # ascending feature index, keeping the selection deterministic.
         ranked = np.argsort(-relevance, kind="stable")

@@ -18,6 +18,7 @@ from harness.lr_final import lr_metrics_to_dict, score_selected_features_with_lr
 from probe import DecisionTreeProbe
 from radar_ship_fs.experiment.artifact import ArtifactStore, development_fingerprint
 from radar_ship_fs.experiment.config import load_experiment_spec
+from radar_ship_fs.feature_mapping import FeatureIndexMap
 from radar_ship_fs.feedback.encoders import radar_feature_domains
 from radar_ship_fs.rl.checkpoint import CheckpointStore
 from rng import SeededRng
@@ -107,9 +108,13 @@ def _run_row(spec, seed: int, method, context) -> dict[str, Any]:
         raise ValueError(f"development data fingerprint mismatch in {run_dir}")
     trajectory = selection.get("trajectory", [])
     if method.type == "dqn" and len(trajectory) != spec.training.steps:
-        raise ValueError(f"incomplete selection trajectory in {run_dir} (expected {spec.training.steps}, got {len(trajectory)})")
+        raise ValueError(
+            f"incomplete selection trajectory in {run_dir} "
+            f"(expected {spec.training.steps}, got {len(trajectory)})"
+        )
 
-    subset = tuple(int(value) for value in selection["selected_clean_indices"])
+    feature_map = FeatureIndexMap.from_metadata(context.split.train.metadata or {})
+    subset = feature_map.validate_artifact_selection(selection)
     budget = spec.training.feature_budget
     if budget is not None and len(subset) > budget:
         raise ValueError(f"selected subset exceeds feature budget in {run_dir}")
@@ -224,7 +229,15 @@ def evaluate(config_path: str) -> dict[str, Any]:
         "protocol": {
             "selection_rerun": False,
             "all_selections_completed_before_test_evaluation": True,
-            "source_test_role": "screening benchmark",
+            "source_test_role": "reused_source_test_diagnostic_only",
+            "historical_source_test_already_observed": True,
+            "independent_validation_claim_allowed": False,
+            "test_used_for_subset_or_penalty_selection": False,
+            "primary_final_classifier": (
+                "StandardScaler + LogisticRegression(C=1.0, solver=liblinear, "
+                "max_iter=5000, class_weight=balanced)"
+            ),
+            "secondary_diagnostic_classifier": "DecisionTreeClassifier",
             "feature_budget": spec.training.feature_budget,
             "config_hash": spec.config_hash,
         },

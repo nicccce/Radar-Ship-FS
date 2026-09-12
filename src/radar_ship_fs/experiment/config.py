@@ -74,6 +74,7 @@ class TrainingSpec:
 @dataclass(frozen=True)
 class PPOSpec:
     initialization: str = "mi_greedy"
+    evaluation_protocol: str = "legacy_holdout_archive"
     episodes: int = 64
     episodes_per_update: int = 16
     learning_rate: float = 3e-4
@@ -91,8 +92,10 @@ class PPOSpec:
     correlation_penalty: float = 0.02
     sparsity_bonus: float = 0.002
     feature_id_seed: int = 0
+    feature_id_node_feature: bool = True
     feature_id_reward_weight: float = 0.1
     archive_accuracy_tolerance: float = 0.001
+    archive_min_cv_gain: float = 0.001
     shaping_scale: float = 0.1
     terminal_reward_scale: float = 10.0
     greedy_rollouts: int = 1
@@ -200,12 +203,23 @@ class ExperimentSpec:
         if cfg.over_budget_penalty_weight < 0.0:
             raise ValueError("over_budget_penalty_weight must be non-negative")
 
-        if self.ppo.initialization not in {"mi_greedy", "random"}:
-            raise ValueError("ppo.initialization must be mi_greedy or random")
+        if self.ppo.initialization not in {"mi_greedy", "mi_ordered_accept", "random"}:
+            raise ValueError(
+                "ppo.initialization must be mi_ordered_accept, mi_greedy (historical alias), or random"
+            )
+        if self.ppo.evaluation_protocol not in {
+            "legacy_holdout_archive",
+            "shared_inner_cv",
+        }:
+            raise ValueError(
+                "ppo.evaluation_protocol must be legacy_holdout_archive or shared_inner_cv"
+            )
         if self.ppo.feature_id_reward_weight < 0.0:
             raise ValueError("ppo.feature_id_reward_weight must be non-negative")
         if self.ppo.archive_accuracy_tolerance < 0.0:
             raise ValueError("ppo.archive_accuracy_tolerance must be non-negative")
+        if self.ppo.archive_min_cv_gain < 0.0:
+            raise ValueError("ppo.archive_min_cv_gain must be non-negative")
         if self.ppo.max_swaps <= 0:
             raise ValueError("ppo.max_swaps must be positive")
         if self.ppo.swap_candidate_pool <= 0:

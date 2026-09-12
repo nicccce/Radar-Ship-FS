@@ -46,6 +46,7 @@ class ExperimentConfig:
     correlation_penalty: float = 0.02
     sparsity_bonus: float = 0.002
     feature_id_seed: int = 0
+    feature_id_node_feature: bool = True
     feature_id_reward_weight: float = 0.1
     archive_accuracy_tolerance: float = 0.001
     shaping_scale: float = 0.1

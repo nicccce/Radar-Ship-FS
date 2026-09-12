@@ -45,6 +45,14 @@ def test_cross_validated_probe_reports_fixed_fold_scores_and_rejects_test() -> N
     assert result.accuracy == pytest.approx(np.mean(fold_scores))
     assert probe.probe((0, 1), development).tree is result.tree
     assert len(folds) == 5
+    repeated = CrossValidatedDecisionTreeProbe(
+        development,
+        load_config(),
+        SeededRng.from_seed(42),
+        n_splits=5,
+    )
+    assert probe.random_state == repeated.random_state
+    assert probe.fold_indices() == repeated.fold_indices()
     held_out_rows = [row for fold in folds for row in fold["held_out"]]
     assert sorted(held_out_rows) == list(range(50))
     for fold in folds:

@@ -1,4 +1,4 @@
-# Historical 2026-08-15 matrix; use research_baseline.toml for new scientific comparisons.
+# Frozen protocol for new scientific comparisons. Historical configs remain unchanged.
 schema_version = 1
 algorithm_version = "stable_v1"
 
@@ -26,7 +26,8 @@ epsilon_decay_fraction = 0.7
 checkpoint_interval = 25
 hidden_layer_sizes = [128, 128]
 activation = "relu"
-correlation_penalty_weight = 1.0
+correlation_penalty_weight = 0.02
+feature_budget = 32
 over_budget_penalty_weight = 0.0
 reward_scheme = "dt_importance"
 per_agent_credit = "reference"
@@ -39,6 +40,8 @@ hybrid_switch_step = 83
 hybrid_withdraw_step = 166
 
 [ppo]
+initialization = "mi_ordered_accept"
+evaluation_protocol = "shared_inner_cv"
 episodes = 64
 episodes_per_update = 16
 learning_rate = 3e-4
@@ -46,16 +49,35 @@ ppo_epochs = 4
 minibatch_size = 256
 greedy_rollouts = 1
 feature_budget = 32
+correlation_penalty = 0.02
+sparsity_bonus = 0.0
+feature_id_seed = 0
+feature_id_node_feature = false
+feature_id_reward_weight = 0.0
+archive_accuracy_tolerance = 0.0
+archive_min_cv_gain = 0.0
+max_swaps = 2
+swap_candidate_pool = 4
+
+[[methods]]
+name = "mi_topk"
+type = "classical"
+encoder = "relevance_topk"
+
+[[methods]]
+name = "mi_ordered_accept"
+type = "classical"
+encoder = "mi_ordered_accept"
+
+[[methods]]
+name = "forward_greedy"
+type = "classical"
+encoder = "forward_greedy"
 
 [[methods]]
 name = "marlfs"
 type = "dqn"
 encoder = "minimal"
-
-[[methods]]
-name = "relevance_topk"
-type = "classical"
-encoder = "relevance_topk"
 
 [[methods]]
 name = "full_irfs_fixed"
@@ -68,20 +90,5 @@ type = "ppo"
 encoder = "gnn"
 
 [output]
-root = "experiments/v16n_2x_noise"
+root = "experiments/research_baseline_v1"
 resume = true
-
-[[methods]]
-name = "dt_rfe"
-type = "classical"
-encoder = "dt_rfe"
-
-[[methods]]
-name = "mrmr"
-type = "classical"
-encoder = "mrmr"
-
-[[methods]]
-name = "l1"
-type = "classical"
-encoder = "l1"

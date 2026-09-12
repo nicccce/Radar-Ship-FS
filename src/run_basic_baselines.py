@@ -18,6 +18,7 @@ from basic_baseline_utils import (
 )
 from harness.lr_final import lr_metrics_to_dict, score_selected_features_with_lr
 from harness.orchestrator import build_run_context
+from radar_ship_fs.feature_mapping import FeatureIndexMap
 from run_stage2_rl_final_lr import _development_and_test
 from run_stage2_rl_selection import _config_for_encoder
 from stage2_rl_config import (
@@ -45,7 +46,8 @@ def _run_seed(seed: int) -> dict[str, Any]:
     metadata = context.split.train.metadata
     if metadata is None:
         raise ValueError("radar dataset metadata is required")
-    original_ids = [int(value) for value in metadata["final_feature_ids"]]
+    feature_map = FeatureIndexMap.from_metadata(metadata)
+    original_ids = list(feature_map.final_original_ids_1based)
     X_development, y_development, X_test, y_test = _development_and_test(context)
 
     selection_started = time.perf_counter()
@@ -84,7 +86,7 @@ def _run_seed(seed: int) -> dict[str, Any]:
         method: dict[str, Any] = {
             "name": name,
             "selected_clean_indices": list(subset),
-            "selected_original_feature_ids": [original_ids[index] for index in subset],
+            "selected_original_feature_ids": list(feature_map.clean_indices_to_original_ids_1based(subset)),
             "selected_count": len(subset),
             "compression_ratio": float(1.0 - len(subset) / context.n_features),
             "metrics": lr_metrics_to_dict(metrics),

@@ -86,9 +86,10 @@ class FeatureSelectionEnv:
         largest: bool,
     ) -> np.ndarray:
         indices = np.flatnonzero(eligible)
-        quality = self.ppo_graph.static_node_features[indices, :2].mean(axis=1)
-        identifier_preference = normalized_feature_ids(self.feature_ids)[indices]
-        scores = quality + self.config.feature_id_reward_weight * identifier_preference
+        scores = self.ppo_graph.static_node_features[indices, :2].mean(axis=1)
+        if self.config.feature_id_reward_weight > 0.0:
+            identifier_preference = normalized_feature_ids(self.feature_ids)[indices]
+            scores = scores + self.config.feature_id_reward_weight * identifier_preference
         order = np.argsort(scores, kind="stable")
         if largest:
             order = order[::-1]
@@ -134,7 +135,8 @@ class FeatureSelectionEnv:
         relevance = float(quality[indices].sum() / self.config.feature_budget)
         coverage = float(indices.size / self.config.feature_budget)
         value = relevance - 0.25 * coverage * self.ppo_graph.redundancy(mask)
-        value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
+        if self.config.feature_id_reward_weight > 0.0:
+            value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
         return float(value)
 
     def objective(self, accuracy: float, mask: np.ndarray) -> tuple[float, float]:
@@ -142,7 +144,8 @@ class FeatureSelectionEnv:
         sparsity = 1.0 - float(mask.sum()) / self.config.feature_budget
         value = accuracy - self.config.correlation_penalty * redundancy
         value += self.config.sparsity_bonus * sparsity
-        value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
+        if self.config.feature_id_reward_weight > 0.0:
+            value += self.config.feature_id_reward_weight * feature_id_score(mask, self.feature_ids)
         return float(value), redundancy
 
     def _take_feature_action(self, action: int) -> bool:
@@ -174,11 +177,6 @@ class FeatureSelectionEnv:
 
         summary = None
         if done:
-            if int(self.selected.sum()) == 18:
-                import json
-
-                with open("/root/feature-select/tmp/ppo_cheat_18.jsonl", "a") as f:
-                    f.write(json.dumps({"subset": np.flatnonzero(self.selected).tolist()}) + "\n")
             cv = self.evaluator.score(self.selected)
             objective, redundancy = self.objective(cv.mean_accuracy, self.selected)
             reward += self.config.terminal_reward_scale * (objective - self.baseline_objective)

@@ -1,0 +1,80 @@
+# Fast plumbing check only; never use these two-step results in scientific tables.
+schema_version = 1
+algorithm_version = "stable_v1"
+
+[dataset]
+name = "radar_ship"
+version = "v16n_2x_noise"
+data_dir = "../dataset"
+seeds = [42]
+validation_fraction = 0.25
+inner_cv_folds = 2
+expected_clean_features = 65
+
+[training]
+steps = 2
+discount = 0.9
+learning_rate = 0.0003
+batch_size = 1
+replay_capacity = 8
+warmup_steps = 1
+target_sync_interval = 1
+gradient_clip_norm = 10.0
+epsilon_start = 1.0
+epsilon_end = 0.05
+epsilon_decay_fraction = 1.0
+checkpoint_interval = 1
+hidden_layer_sizes = [8]
+activation = "relu"
+correlation_penalty_weight = 0.02
+feature_budget = 4
+over_budget_penalty_weight = 0.0
+reward_scheme = "dt_importance"
+per_agent_credit = "reference"
+neighbor_global_mix = 0.5
+per_node_features = "summary_statistics"
+state_pooling = "dt_importance"
+gcn_hidden_dim = 2
+gcn_layers = 1
+hybrid_switch_step = 0
+hybrid_withdraw_step = 1
+
+[ppo]
+initialization = "random"
+evaluation_protocol = "shared_inner_cv"
+episodes = 2
+episodes_per_update = 1
+learning_rate = 3e-4
+ppo_epochs = 1
+minibatch_size = 8
+greedy_rollouts = 1
+hidden_dim = 8
+feature_budget = 4
+correlation_penalty = 0.02
+sparsity_bonus = 0.0
+feature_id_seed = 0
+feature_id_node_feature = false
+feature_id_reward_weight = 0.0
+archive_accuracy_tolerance = 0.0
+archive_min_cv_gain = 0.0
+max_swaps = 1
+swap_candidate_pool = 2
+
+[[methods]]
+name = "mi_topk_smoke"
+type = "classical"
+encoder = "relevance_topk"
+
+[[methods]]
+name = "marlfs_smoke"
+type = "dqn"
+encoder = "minimal"
+
+[[methods]]
+name = "gnn_ppo_smoke"
+type = "ppo"
+encoder = "gnn"
+
+[output]
+root = "/tmp/radar_ship_research_smoke_v1"
+resume = false

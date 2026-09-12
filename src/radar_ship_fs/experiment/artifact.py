@@ -20,6 +20,7 @@ import sklearn
 import torch
 
 from radar_ship_fs import __version__
+from radar_ship_fs.feature_mapping import FeatureIndexMap
 
 
 def _jsonable(value: Any) -> Any:
@@ -139,6 +140,15 @@ class ArtifactStore:
             return
         metadata = context.split.train.metadata or {}
         labels, counts = np.unique(context.split.train.y, return_counts=True)
+        probe = getattr(context, "probe", None)
+        selection_cv = None
+        if probe is not None and hasattr(probe, "fold_indices"):
+            selection_cv = {
+                "probe": type(probe).__name__,
+                "n_splits": int(probe.n_splits),
+                "random_state": int(probe.random_state),
+                "fold_indices": probe.fold_indices(),
+            }
         manifest = {
             "artifact_schema_version": 1,
             "package_version": __version__,
@@ -147,6 +157,7 @@ class ArtifactStore:
             "method": asdict(method),
             "seed": seed,
             "dataset_metadata": metadata,
+            "selection_cv": selection_cv,
             "data_summary": {
                 "search_rows": int(context.split.train.X.shape[0]),
                 "held_out_rows": int(context.split.test.X.shape[0]),
@@ -172,17 +183,31 @@ class ArtifactStore:
         }
         self.write_json(manifest, self.manifest_path)
 
-    def write_result(self, result, *, identity: dict, context) -> dict:
+    def write_result(
+        self,
+        result,
+        *,
+        identity: dict,
+        context,
+        selection_score_protocol: dict[str, Any],
+    ) -> dict:
         metadata = context.split.train.metadata or {}
-        original_ids = metadata.get("final_feature_ids", list(range(context.n_features)))
+        feature_map = FeatureIndexMap.from_metadata(metadata)
         selected = tuple(int(value) for value in result.selection.selected)
+        selected_original = feature_map.clean_indices_to_original_ids_1based(selected)
         metrics = [metric.as_dict() for metric in result.metrics]
         payload = {
             "artifact_schema_version": 1,
             "algorithm_version": "stable_v1",
             "experiment_signature": identity,
             "selected_clean_indices": list(selected),
-            "selected_original_feature_ids": [int(original_ids[index]) for index in selected],
+            "selected_original_feature_ids": list(selected_original),
+            "feature_coordinate_systems": {
+                "selected_clean_indices": "0-based columns in the cleaned matrix",
+                "selected_original_feature_ids": "1-based IDs in the 75-feature scientific catalog",
+                "raw_numpy_columns": "selected_original_feature_ids minus 1",
+            },
+            "selection_score_protocol": selection_score_protocol,
             "selected_count": len(selected),
             "best_dt_inner_cv_accuracy": (
                 result.metrics[-1].best_accuracy if result.metrics else result.initial_accuracy

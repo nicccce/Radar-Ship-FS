@@ -50,6 +50,11 @@ class CrossValidatedDecisionTreeProbe:
     def n_splits(self) -> int:
         return self._n_splits
 
+    @property
+    def random_state(self) -> int:
+        """Return the frozen seed used by both folds and Decision Trees."""
+        return self._random_state
+
     def _validate_eval_partition(self, eval_partition: Partition) -> None:
         if not np.array_equal(eval_partition.indices, self._development.indices):
             raise ValueError(

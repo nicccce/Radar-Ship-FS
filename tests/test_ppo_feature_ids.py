@@ -163,3 +163,65 @@ def test_negative_feature_id_settings_are_rejected() -> None:
         replace(ExperimentConfig(), feature_id_reward_weight=-0.1).validate()
     with pytest.raises(ValueError, match="archive_accuracy_tolerance"):
         replace(ExperimentConfig(), archive_accuracy_tolerance=-0.1).validate()
+
+
+def test_zero_weight_removes_ids_from_candidate_pool_shaping_and_objective() -> None:
+    config = ExperimentConfig(
+        feature_budget=2,
+        min_features=1,
+        search_mode="swap",
+        swap_candidate_pool=2,
+        feature_id_reward_weight=0.0,
+        correlation_penalty=0.0,
+        sparsity_bonus=0.0,
+        shaping_scale=1.0,
+        terminal_reward_scale=1.0,
+    )
+    first_graph = _FlatGraph(6, feature_id_seed=3)
+    second_graph = _FlatGraph(6, feature_id_seed=99)
+    first_graph.static_node_features[:, 0] = np.asarray([0.2, 0.1, 0.9, 0.8, 0.7, 0.6])
+    second_graph.static_node_features[:] = first_graph.static_node_features
+    initial = np.asarray([True, True, False, False, False, False])
+
+    first = FeatureSelectionEnv(
+        first_graph, _ConstantEvaluator(), config, baseline_objective=0.8, initial_mask=initial
+    )
+    second = FeatureSelectionEnv(
+        second_graph, _ConstantEvaluator(), config, baseline_objective=0.8, initial_mask=initial
+    )
+    eligible = np.ones(6, dtype=bool)
+
+    assert first._swap_candidates(eligible, largest=True).tolist() == [2, 3]
+    assert second._swap_candidates(eligible, largest=True).tolist() == [2, 3]
+    assert first._proxy(initial) == pytest.approx(second._proxy(initial))
+    assert first.objective(0.8, initial) == second.objective(0.8, initial)
+
+
+def test_random_id_node_channel_can_be_excluded() -> None:
+    rng = np.random.default_rng(17)
+    X = rng.normal(size=(40, 4))
+    y = np.tile(np.asarray([0, 1]), 20)
+    with_id = build_feature_graph(
+        X,
+        y,
+        np.zeros(4, dtype=int),
+        threshold=0.8,
+        seed=11,
+        feature_id_seed=17,
+        include_feature_id_node_feature=True,
+    )
+    without_id = build_feature_graph(
+        X,
+        y,
+        np.zeros(4, dtype=int),
+        threshold=0.8,
+        seed=11,
+        feature_id_seed=99,
+        include_feature_id_node_feature=False,
+    )
+
+    assert with_id.static_node_features.shape[1] == without_id.static_node_features.shape[1] + 1
+    np.testing.assert_allclose(
+        with_id.static_node_features[:, :-1],
+        without_id.static_node_features,
+    )

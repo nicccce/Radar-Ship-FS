@@ -90,6 +90,14 @@ def test_manifest_versions_and_data_summary_match_the_process(tmp_path: Path) ->
     spec = load_experiment_spec("configs/v16n/stable.toml")
     context = SimpleNamespace(
         n_features=2,
+        probe=SimpleNamespace(
+            n_splits=2,
+            random_state=123,
+            fold_indices=lambda: [
+                {"fit": [0], "held_out": [1, 2]},
+                {"fit": [1, 2], "held_out": [0]},
+            ],
+        ),
         split=SimpleNamespace(
             train=SimpleNamespace(
                 X=np.zeros((3, 2)),
@@ -114,6 +122,15 @@ def test_manifest_versions_and_data_summary_match_the_process(tmp_path: Path) ->
     assert manifest["runtime"]["pandas"] == pd.__version__
     assert manifest["runtime"]["scikit_learn"] == sklearn.__version__
     assert manifest["runtime"]["torch"] == str(torch.__version__)
+    assert manifest["selection_cv"] == {
+        "probe": "SimpleNamespace",
+        "n_splits": 2,
+        "random_state": 123,
+        "fold_indices": [
+            {"fit": [0], "held_out": [1, 2]},
+            {"fit": [1, 2], "held_out": [0]},
+        ],
+    }
     assert manifest["data_summary"] == {
         "class_counts": {"0": 1, "1": 2},
         "development_fingerprint": "abc",
@@ -121,3 +138,18 @@ def test_manifest_versions_and_data_summary_match_the_process(tmp_path: Path) ->
         "n_features": 2,
         "search_rows": 3,
     }
+
+
+def test_research_baseline_freezes_shared_ppo_and_disables_random_id_reward() -> None:
+    spec = load_experiment_spec("configs/v16n/research_baseline.toml")
+
+    assert spec.dataset.version == "v16n_2x_noise"
+    assert spec.training.feature_budget == spec.ppo.feature_budget == 32
+    assert spec.ppo.initialization == "mi_ordered_accept"
+    assert spec.ppo.evaluation_protocol == "shared_inner_cv"
+    assert spec.ppo.feature_id_reward_weight == 0.0
+    assert spec.ppo.feature_id_node_feature is False
+    methods = {method.name: method.encoder for method in spec.enabled_methods}
+    assert methods["mi_topk"] == "relevance_topk"
+    assert methods["mi_ordered_accept"] == "mi_ordered_accept"
+    assert methods["forward_greedy"] == "forward_greedy"
