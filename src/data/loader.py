@@ -6,9 +6,8 @@ Loads the sim_ship_cr radar dataset.
 from __future__ import annotations
 
 import hashlib
-import os
 from pathlib import Path
-from typing import Callable, NamedTuple, Optional
+from typing import NamedTuple, Optional
 
 import numpy as np
 from sklearn.datasets import load_svmlight_file
@@ -18,6 +17,7 @@ from config import IrfsConfig
 
 class LoadedDataset(NamedTuple):
     """Result of loading a dataset."""
+
     X: np.ndarray
     y: np.ndarray
     feature_names: list[str]
@@ -57,6 +57,103 @@ def _label_counts(y: np.ndarray) -> dict[str, int]:
     return {str(int(label)): int(count) for label, count in zip(labels, counts)}
 
 
+def load_radar_ship_source_train(
+    data_dir: str,
+    version: str,
+) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
+    """Load source-train and fit the canonical radar feature-cleaning map.
+
+    The final source-test file is checked for presence but is not opened. This lets selection-only
+    workflows create every seed and inner fold without repeatedly materialising final-test values.
+    """
+
+    if not version or any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+        for character in version
+    ):
+        raise ValueError(f"invalid radar_ship_version: {version!r}")
+    root = Path(data_dir)
+    train_path = root / f"sim_ship_cr_{version}.train.svm"
+    test_path = root / f"sim_ship_cr_{version}.test.svm"
+    missing = [str(path) for path in (train_path, test_path) if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Radar-ship SVM-light file(s) not found: {missing}.")
+
+    n_original_features = 75
+    X_train_sparse, y_train = load_svmlight_file(train_path, n_features=n_original_features)
+    X_train = X_train_sparse.toarray().astype(np.float32)
+    y_train = y_train.astype(np.int64)
+
+    feature_min = X_train.min(axis=0)
+    feature_max = X_train.max(axis=0)
+    constant_mask = np.isclose(feature_max, feature_min)
+    nonconstant_mask = ~constant_mask
+    original_ids = np.arange(1, n_original_features + 1, dtype=int)
+    nonconstant_ids = original_ids[nonconstant_mask]
+
+    X_train_nonconstant = X_train[:, nonconstant_mask]
+    unique_indices, duplicate_positions = _find_unique_columns(X_train_nonconstant)
+    X_train_final = X_train_nonconstant[:, unique_indices]
+    final_ids = nonconstant_ids[unique_indices]
+    duplicate_original_ids = {
+        int(nonconstant_ids[removed]): int(nonconstant_ids[kept])
+        for removed, kept in duplicate_positions.items()
+    }
+
+    feature_names = [f"feature_{feature_id}" for feature_id in final_ids]
+    metadata = {
+        "source_format": "svmlight",
+        "source_version": version,
+        "source_files": {
+            "train": {"name": train_path.name, "sha256": _sha256(train_path)},
+            "test": {"name": test_path.name, "sha256": None},
+        },
+        "original_feature_count": n_original_features,
+        "constant_feature_ids": original_ids[constant_mask].tolist(),
+        "duplicate_feature_mapping": {str(removed): kept for removed, kept in duplicate_original_ids.items()},
+        "final_feature_ids": final_ids.tolist(),
+        "final_feature_count": int(final_ids.size),
+        "source_train_rows": int(X_train_final.shape[0]),
+        "source_test_rows": None,
+        "source_train_label_counts": _label_counts(y_train),
+        "source_test_label_counts": None,
+        "preprocessing_fit_scope": "source_train_only",
+    }
+    return X_train_final, y_train, feature_names, metadata
+
+
+def load_radar_ship_source_test(
+    data_dir: str,
+    version: str,
+    train_metadata: dict,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Load source-test once and apply the source-train cleaning map unchanged."""
+
+    if train_metadata.get("source_version") != version:
+        raise ValueError("train metadata version does not match requested source-test version")
+    test_path = Path(data_dir) / f"sim_ship_cr_{version}.test.svm"
+    if not test_path.is_file():
+        raise FileNotFoundError(f"Radar-ship SVM-light file not found: {test_path}.")
+
+    n_original_features = int(train_metadata["original_feature_count"])
+    final_ids = np.asarray(train_metadata["final_feature_ids"], dtype=int)
+    if final_ids.size == 0 or final_ids.min() < 1 or final_ids.max() > n_original_features:
+        raise ValueError("train metadata contains an invalid final feature mapping")
+
+    X_test_sparse, y_test = load_svmlight_file(test_path, n_features=n_original_features)
+    X_test_raw = X_test_sparse.toarray().astype(np.float32)
+    X_test_final = X_test_raw[:, final_ids - 1]
+    y_test = y_test.astype(np.int64)
+    test_metadata = {
+        "name": test_path.name,
+        "sha256": _sha256(test_path),
+        "rows": int(X_test_final.shape[0]),
+        "label_counts": _label_counts(y_test),
+        "mapping_fit_scope": "source_train_only",
+    }
+    return X_test_final, y_test, test_metadata
+
+
 def load_radar_ship(data_dir: str, version: str) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
     """Load and clean the supplied radar-ship SVM-light train/test files."""
     if not version or any(
@@ -69,14 +166,12 @@ def load_radar_ship(data_dir: str, version: str) -> tuple[np.ndarray, np.ndarray
     test_path = root / f"sim_ship_cr_{version}.test.svm"
     missing = [str(path) for path in (train_path, test_path) if not path.is_file()]
     if missing:
-        raise FileNotFoundError(
-            f"Radar-ship SVM-light file(s) not found: {missing}."
-        )
+        raise FileNotFoundError(f"Radar-ship SVM-light file(s) not found: {missing}.")
 
     n_original_features = 75
     X_train_sparse, y_train = load_svmlight_file(train_path, n_features=n_original_features)
     X_test_sparse, y_test = load_svmlight_file(test_path, n_features=n_original_features)
-    
+
     X_train = X_train_sparse.toarray().astype(np.float32)
     X_test = X_test_sparse.toarray().astype(np.float32)
     y_train = y_train.astype(np.int64)

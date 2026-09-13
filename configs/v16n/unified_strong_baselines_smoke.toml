@@ -1,0 +1,43 @@
+# Plumbing-only paired smoke run. Its results are excluded from scientific tables.
+schema_version = 1
+protocol_version = "unified-strong-baselines-smoke-v1"
+
+[dataset]
+name = "radar_ship"
+version = "v16n_2x_noise"
+data_dir = "../dataset"
+seeds = [42, 43]
+validation_fraction = 0.25
+inner_cv_folds = 2
+expected_original_features = 75
+expected_clean_features = 65
+expected_source_train_rows = 3897
+expected_source_test_rows = 1671
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+source_test_sha256 = "6817c73da48cdc32fe0262e35c05532c0c4552cdbeb1349db9a6e16f0f014e72"
+
+[selection]
+methods = [
+  "all_features",
+  "mi_topk",
+  "mi_ordered_accept",
+  "forward_greedy",
+  "forward_greedy_single_swap",
+]
+fixed_k = [4, 8]
+k_max = 8
+strict_improvement_tolerance = 1e-12
+max_swap_rounds = 8
+n_jobs = 4
+
+[final_classifier]
+primary = "logistic_regression_pipeline"
+C = 1.0
+solver = "liblinear"
+max_iter = 5000
+class_weight = "balanced"
+secondary = "decision_tree"
+
+[output]
+root = "/tmp/radar_ship_unified_baselines_smoke_v1"
+resume = true
