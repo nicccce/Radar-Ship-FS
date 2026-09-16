@@ -1,0 +1,65 @@
+version = "reward-alignment-v1"
+dataset = "v16n_2x_noise"
+source_train = "../dataset/sim_ship_cr_v16n_2x_noise.train.svm"
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+source_test_open_count = 0
+rl_training_count = 0
+seeds = [42, 43, 44, 45, 46]
+ks = [16, 32]
+outer_split_random_state_offset = 10000
+strict_epsilon = 1e-12
+
+[candidate_bank]
+base = "task3_nested_dev_forward_checkpoint"
+include_mi_topk = true
+include_complete_forward_single_swap = true
+global_random_count = 32
+perturbation_swap_distances = [2, 4, 8]
+perturbation_count_per_distance = 16
+random_state_offset = 400000
+
+[scoring]
+signals = ["dt_accuracy", "dt_bacc", "lr_accuracy", "lr_bacc"]
+n_splits = 5
+repeat_count = 3
+additional_repeat_offsets = [420000, 430000]
+aggregations = ["single_5fold", "repeated_mean", "mean_minus_0_5_sd"]
+uncertainty_penalty_sd_weight = 0.5
+lr_c = 1.0
+lr_solver = "liblinear"
+lr_max_iter = 5000
+lr_class_weight = "balanced"
+dt_random_state = "inherited_cv_tree_random_state"
+standard_scaler_fit_scope = "each_scoring_training_fold"
+
+[reliability]
+primary_outer_metric = "lr_bacc"
+top_b = 32
+minimum_mean_enrichment_each_k = 2.0
+minimum_partitions_enriched_each_k = 4
+minimum_repeat_rank_stability_each_k = 0.5
+eligible_signals = ["lr_bacc"]
+tie_priority = ["repeated_mean", "mean_minus_0_5_sd", "single_5fold"]
+
+[search]
+method = "exact_k_forward_then_best_improvement_single_swap"
+max_swap_rounds = 2
+require_strict_improvement = true
+reward_archive_stop_same_objective = true
+correlation_penalty = 0.0
+
+[success]
+minimum_positive_outer_partitions_each_k = 4
+minimum_mean_outer_lr_bacc_gain_each_k = 0.002
+maximum_unique_scored_subsets_per_seed_k = 4000
+maximum_classifier_fits_per_seed_k = 60000
+maximum_scoring_fit_multiplier = 3
+require_both_k = true
+
+[accounting]
+report_candidate_requests = true
+report_unique_subsets = true
+report_classifier_fits = true
+report_cache_hits = true
+report_wall_seconds = true
+report_initialization_cost = true

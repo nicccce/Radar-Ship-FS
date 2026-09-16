@@ -63,12 +63,22 @@ class FeatureSelectionEnv:
         self.swaps_completed = 0
         self.removed_feature: int | None = None
         self.total_reward = 0.0
+        self._support_draw = -1
+        self._support_rng = np.random.default_rng(
+            np.random.SeedSequence([int(config.seed), 0x53555050, 0])
+        )
+        self._support_cache: dict[tuple[bytes, bool], np.ndarray] = {}
 
     def reset(self) -> Observation:
         self.selected = self.initial_mask.copy()
         self.swaps_completed = 0
         self.removed_feature = None
         self.total_reward = 0.0
+        self._support_draw += 1
+        self._support_rng = np.random.default_rng(
+            np.random.SeedSequence([int(self.config.seed), 0x53555050, self._support_draw])
+        )
+        self._support_cache.clear()
         return self.observation()
 
     def _scratch_valid_actions(self) -> np.ndarray:
@@ -79,12 +89,7 @@ class FeatureSelectionEnv:
         valid[self.stop_action] = selected_count >= self.config.min_features
         return valid
 
-    def _swap_candidates(
-        self,
-        eligible: np.ndarray,
-        *,
-        largest: bool,
-    ) -> np.ndarray:
+    def _quality_order(self, eligible: np.ndarray, *, largest: bool) -> np.ndarray:
         indices = np.flatnonzero(eligible)
         scores = self.ppo_graph.static_node_features[indices, :2].mean(axis=1)
         if self.config.feature_id_reward_weight > 0.0:
@@ -93,7 +98,50 @@ class FeatureSelectionEnv:
         order = np.argsort(scores, kind="stable")
         if largest:
             order = order[::-1]
-        return indices[order[: self.config.swap_candidate_pool]]
+        return indices[order]
+
+    def swap_action_support_probability(
+        self,
+        eligible: np.ndarray,
+        action: int,
+        *,
+        largest: bool,
+    ) -> float:
+        """Return the action's marginal inclusion probability over support draws."""
+        eligible = np.asarray(eligible, dtype=bool)
+        if action < 0 or action >= eligible.size or not eligible[action]:
+            return 0.0
+        ordered = self._quality_order(eligible, largest=largest)
+        prior_count = min(self.config.swap_candidate_pool, len(ordered))
+        if action in set(ordered[:prior_count].tolist()):
+            return 1.0
+        remainder = len(ordered) - prior_count
+        quota = min(self.config.swap_exploration_pool, remainder)
+        return float(quota / remainder) if remainder else 0.0
+
+    def _swap_candidates(
+        self,
+        eligible: np.ndarray,
+        *,
+        largest: bool,
+    ) -> np.ndarray:
+        eligible = np.asarray(eligible, dtype=bool)
+        cache_key = (np.packbits(eligible).tobytes(), largest)
+        if cache_key in self._support_cache:
+            return self._support_cache[cache_key].copy()
+
+        ordered = self._quality_order(eligible, largest=largest)
+        prior_count = min(self.config.swap_candidate_pool, len(ordered))
+        prior = ordered[:prior_count]
+        remainder = ordered[prior_count:]
+        quota = min(self.config.swap_exploration_pool, len(remainder))
+        if quota:
+            exploration = self._support_rng.choice(remainder, size=quota, replace=False)
+            candidates = np.concatenate([prior, np.sort(exploration)])
+        else:
+            candidates = prior
+        self._support_cache[cache_key] = candidates.copy()
+        return candidates
 
     def _swap_valid_actions(self) -> np.ndarray:
         selected_count = int(self.selected.sum())

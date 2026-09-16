@@ -26,6 +26,7 @@ class ExperimentConfig:
     search_mode: str = "swap"
     max_swaps: int = 2
     swap_candidate_pool: int = 4
+    swap_exploration_pool: int = 0
 
     episodes: int = 64
     episodes_per_update: int = 16
@@ -69,6 +70,8 @@ class ExperimentConfig:
             raise ValueError("max_swaps must be positive")
         if self.swap_candidate_pool < 1:
             raise ValueError("swap_candidate_pool must be positive")
+        if self.swap_exploration_pool < 0:
+            raise ValueError("swap_exploration_pool must be non-negative")
         if self.feature_id_reward_weight < 0.0:
             raise ValueError("feature_id_reward_weight must be non-negative")
         if self.archive_accuracy_tolerance < 0.0:

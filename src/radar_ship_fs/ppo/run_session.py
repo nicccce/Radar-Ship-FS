@@ -86,6 +86,7 @@ def run_ppo_session(
         search_mode="swap",
         max_swaps=spec.ppo.max_swaps,
         swap_candidate_pool=spec.ppo.swap_candidate_pool,
+        swap_exploration_pool=spec.ppo.swap_exploration_pool,
         episodes=spec.ppo.episodes,
         episodes_per_update=spec.ppo.episodes_per_update,
         greedy_rollouts=spec.ppo.greedy_rollouts,

@@ -1,0 +1,48 @@
+version = "action-support-v1"
+dataset = "v16n_2x_noise"
+source_train = "../dataset/sim_ship_cr_v16n_2x_noise.train.svm"
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+source_test_open_count = 0
+rl_training_count = 0
+seeds = [42, 43, 44, 45, 46]
+ks = [8, 16, 32]
+origin_phases = ["forward", "local"]
+search_score = "frozen 5-fold DecisionTree accuracy"
+strict_epsilon = 1e-12
+
+[old_support]
+quality_prior_pool = 4
+global_exploration_pool = 0
+max_swaps = 2
+
+[new_support]
+quality_prior_pool = 4
+global_exploration_pool = 4
+max_swaps = 2
+exploration_draw = "uniform_without_replacement_from_eligible_outside_quality_prior"
+draw_scope = "per_episode_and_state"
+
+[replay]
+methods = ["old_mask", "quality_plus_global", "uniform_legal"]
+incremental_unique_subset_budget = 64
+replay_seeds = [41001, 41002, 41003, 41004, 41005]
+swap_depths = [1, 2]
+swap_depth_probability = [0.5, 0.5]
+action_rule = "uniform_over_current_candidate_mask"
+duplicate_requests_do_not_spend_budget = true
+initial_subset_does_not_spend_incremental_budget = true
+maximum_requests_per_run = 10000
+
+[accounting]
+fold_fits_per_new_score = 5
+report_unique_subsets = true
+report_classifier_fits = true
+report_cache_hits = true
+report_wall_seconds = true
+report_imported_initialization_cost_separately = true
+
+[interpretation]
+coverage_examples_are_regression_only = true
+reachability_does_not_imply_policy_success = true
+offline_replay_does_not_establish_rl_effectiveness = true
+historical_policy_gap_requires_matched_historical_policy = true

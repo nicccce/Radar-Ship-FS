@@ -1,0 +1,239 @@
+$ conda run -n dl-lab pytest --collect-only -q
+exit_code=2
+
+tests/test_action_support.py::test_zero_exploration_preserves_old_pool_exactly
+tests/test_action_support.py::test_exploration_quota_is_stable_within_state_and_reproducible
+tests/test_action_support.py::test_every_legal_swap_has_strictly_positive_marginal_support
+tests/test_action_support.py::test_old_pool_assigns_zero_support_outside_quality_prior
+tests/test_action_support.py::test_negative_exploration_quota_is_rejected
+tests/test_cv_probe.py::test_cross_validated_probe_reports_fixed_fold_scores_and_rejects_test
+tests/test_cv_probe.py::test_inner_cv_split_view_keeps_source_test
+tests/test_cv_probe.py::test_equal_accuracy_prefers_fewer_features
+tests/test_cv_probe.py::test_budget_filter_rejects_even_more_accurate_oversized_candidate
+tests/test_cv_probe.py::test_initial_feasible_candidate_survives_when_all_steps_are_oversized
+tests/test_data.py::test_wdbc_loads_with_derived_shape
+tests/test_data.py::test_grouped_dataset_drops_id_and_exposes_subject_groups
+tests/test_data.py::test_missing_dataset_file_raises_with_guidance
+tests/test_data.py::test_unknown_dataset_name_is_rejected
+tests/test_data.py::test_partitions_are_disjoint_and_cover_the_dataset
+tests/test_data.py::test_split_exposes_all_three_partitions
+tests/test_data.py::test_split_keeps_each_group_whole
+tests/test_data.py::test_radar_ship_loader_cleans_features_from_source_train_only
+tests/test_data.py::test_radar_ship_keeps_source_test_rows_as_test
+tests/test_domain_gcn.py::test_radar_domains_follow_original_ids_and_shuffle_preserves_group_sizes
+tests/test_domain_gcn.py::test_domain_hierarchy_is_exact_base_at_zero_gates_and_differentiable_when_enabled
+tests/test_domain_gcn.py::test_domain_encoder_factory_keeps_initial_gcn_weights_paired
+tests/test_domain_gcn.py::test_checked_in_domain_screen_is_a_paired_four_arm_identification_matrix
+tests/test_feature_mapping.py::test_nontrivial_clean_mapping_does_not_confuse_original_ids_with_columns
+tests/test_feature_mapping.py::test_artifact_mapping_mismatch_fails_loudly
+tests/test_feature_mapping.py::test_original_id_conversion_rejects_ambiguous_or_invalid_ids[values0-outside]
+tests/test_feature_mapping.py::test_original_id_conversion_rejects_ambiguous_or_invalid_ids[values1-outside]
+tests/test_feature_mapping.py::test_original_id_conversion_rejects_ambiguous_or_invalid_ids[values2-duplicate]
+tests/test_feature_mapping.py::test_feature_coordinates_reject_fractional_values_instead_of_truncating
+tests/test_greedy_protocols.py::test_mi_topk_is_fixed_k_without_subset_scoring
+tests/test_greedy_protocols.py::test_mi_ordered_accept_checks_one_fixed_ranking
+tests/test_greedy_protocols.py::test_forward_greedy_enumerates_all_remaining_features_each_step
+tests/test_ppo_feature_ids.py::test_random_feature_ids_are_a_fixed_seeded_permutation
+tests/test_ppo_feature_ids.py::test_random_feature_id_is_visible_to_the_graph_actor
+tests/test_ppo_feature_ids.py::test_same_accuracy_candidate_prefers_larger_random_feature_id
+tests/test_ppo_feature_ids.py::test_swap_candidate_pool_prefers_high_ids_for_add_and_low_ids_for_remove
+tests/test_ppo_feature_ids.py::test_feature_id_bonus_is_present_in_shaping_and_terminal_reward
+tests/test_ppo_feature_ids.py::test_negative_feature_id_settings_are_rejected
+tests/test_ppo_feature_ids.py::test_zero_weight_removes_ids_from_candidate_pool_shaping_and_objective
+tests/test_ppo_feature_ids.py::test_random_id_node_channel_can_be_excluded
+tests/test_ppo_initialization.py::test_random_initial_mask_is_seeded_and_budget_exact
+tests/test_ppo_initialization.py::test_random_initial_mask_rejects_invalid_budget[0-1]
+tests/test_ppo_initialization.py::test_random_initial_mask_rejects_invalid_budget[5-0]
+tests/test_ppo_initialization.py::test_random_initial_mask_rejects_invalid_budget[5-6]
+tests/test_ppo_initialization.py::test_random_initialization_is_configured_and_validated
+tests/test_reward.py::test_overall_reward_worked_example
+tests/test_reward.py::test_penalty_reuses_training_graph_not_validation
+tests/test_reward.py::test_beta_is_configurable
+tests/test_reward.py::test_singleton_subset_has_no_penalty
+tests/test_reward.py::test_over_budget_penalty_is_normalized_and_shared_by_both_reward_paths
+tests/test_reward.py::test_budget_config_validation
+tests/test_reward.py::test_importance_scheme_worked_example
+tests/test_reward.py::test_importance_rewards_sum_to_overall
+tests/test_reward.py::test_frequency_scheme_zeroes_deselected_despite_history
+tests/test_reward.py::test_frequency_counts_required_and_zero_history_is_zero
+tests/test_reward.py::test_schemes_are_selectable_and_differ
+tests/test_reward.py::test_unknown_scheme_raises
+tests/test_reward_alignment.py::test_candidate_bank_contains_frozen_strata_and_complete_single_swap
+tests/test_reward_alignment.py::test_repeat_aggregations_use_fixed_three_repeat_rule
+tests/test_reward_alignment.py::test_lr_scaler_is_fitted_separately_on_each_scoring_training_fold
+tests/test_reward_alignment.py::test_protocol_selection_is_lr_bacc_only_and_lexicographic
+tests/test_reward_alignment.py::test_best_candidate_ties_keep_frozen_candidate_order
+tests/test_search_diagnosis.py::test_exhaustive_neighbors_are_exact
+tests/test_search_diagnosis.py::test_mask_covers_16_pairs_and_can_exclude_additions
+tests/test_search_diagnosis.py::test_cache_accounts_for_actual_fits_and_gain
+tests/test_search_diagnosis.py::test_double_budget_and_two_out_two_in_without_validation
+tests/test_stable_checkpoint.py::test_interrupted_resume_matches_continuous_training
+tests/test_stable_checkpoint.py::test_each_stable_encoder_completes_a_short_training_run[minimal-uniform-None]
+tests/test_stable_checkpoint.py::test_each_stable_encoder_completes_a_short_training_run[fixed-personalized-hybrid]
+tests/test_stable_checkpoint.py::test_each_stable_encoder_completes_a_short_training_run[trained_gcn-personalized-hybrid]
+tests/test_stable_config.py::test_checked_in_stable_config_expands_only_enabled_methods
+tests/test_stable_config.py::test_filters_must_reference_values_declared_in_toml
+tests/test_stable_config.py::test_unimplemented_credit_and_invalid_training_values_fail_fast
+tests/test_stable_config.py::test_unknown_toml_field_is_rejected
+tests/test_stable_config.py::test_artifact_root_is_reserved_for_one_algorithm_and_config
+tests/test_stable_config.py::test_artifact_observer_recovers_jsonl_without_duplicate_steps
+tests/test_stable_config.py::test_manifest_versions_and_data_summary_match_the_process
+tests/test_stable_config.py::test_research_baseline_freezes_shared_ppo_and_disables_random_id_reward
+tests/test_stable_rl.py::test_replay_is_bounded_and_rejects_non_applied_transition
+tests/test_stable_rl.py::test_environment_records_but_does_not_apply_degenerate_population_vote
+tests/test_stable_rl.py::test_epsilon_schedule_has_exact_boundaries
+tests/test_stable_rl.py::test_double_dqn_uses_online_argmax_and_target_value
+tests/test_stable_rl.py::test_terminal_transition_does_not_bootstrap_and_target_sync_is_periodic
+tests/test_stable_rl.py::test_batch_encoders_match_existing_single_subset_paths
+tests/test_stable_rl.py::test_trainable_gcn_has_fresh_online_state_and_frozen_target
+tests/test_stable_rl.py::test_stable_gcn_batch_one_matches_existing_encoder_at_same_weights
+tests/test_stable_rl.py::test_deterministic_terminal_mdp_learns_the_known_better_action
+tests/test_state.py::test_correlation_is_signed_pearson_on_train
+tests/test_state.py::test_correlation_source_is_train_not_validation
+tests/test_state.py::test_constant_column_yields_zero_correlation
+tests/test_state.py::test_nodes_are_canonical_and_empty_rejected
+tests/test_state.py::test_tree_edges_remap_dedupe_and_live_in_original_space
+tests/test_state.py::test_average_pairwise_abs_correlation_matches_manual
+tests/test_state.py::test_state_dimension_is_fixed_and_subset_size_independent
+tests/test_state.py::test_config_knobs_are_consumed
+tests/test_state.py::test_aggregate_matches_hand_computation
+tests/test_state.py::test_pool_average_is_node_mean
+tests/test_trainers.py::test_rule_fires_strictly_above_the_assertive_median
+tests/test_trainers.py::test_rule_requires_assertive_baseline_and_only_advises_hesitant
+tests/test_trainers.py::test_rule_gives_no_advice_when_there_are_no_hesitant_agents
+tests/test_trainers.py::test_dt_importance_trainer_applies_rule_over_participated_importances
+tests/test_trainers.py::test_relevance_trainer_applies_rule_and_caches_the_vector
+tests/test_trainers.py::test_hybrid_switches_at_boundaries_and_delegates
+tests/test_trainers.py::test_hybrid_degenerate_boundaries_are_well_defined
+tests/test_trainers.py::test_hybrid_rejects_invalid_boundaries
+tests/test_trainers.py::test_build_hybrid_scheduler_wires_real_trainers_from_config
+tests/test_unified_baselines.py::test_train_only_loader_matches_full_loader_cleaning
+tests/test_unified_baselines.py::test_seed_context_reproduces_shared_split_and_folds
+tests/test_unified_baselines.py::test_counting_scorer_counts_unique_subsets_cache_hits_and_fits
+tests/test_unified_baselines.py::test_frozen_unified_configs_validate
+
+==================================== ERRORS ====================================
+________________ ERROR collecting tests/test_basic_baselines.py ________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_basic_baselines.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_basic_baselines.py:10: in <module>
+    from run_basic_baselines import _kbest_mutual_information
+src/run_basic_baselines.py:22: in <module>
+    from run_stage2_rl_final_lr import _development_and_test
+src/run_stage2_rl_final_lr.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_rl_final_lr as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+____________________ ERROR collecting tests/test_engine.py _____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_engine.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_engine.py:29: in <module>
+    from methods.advice import (
+E   ModuleNotFoundError: No module named 'methods.advice'
+____________________ ERROR collecting tests/test_harness.py ____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_harness.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_harness.py:31: in <module>
+    from harness.aggregate import aggregate
+src/harness/aggregate.py:42: in <module>
+    from methods.configure import REINFORCED_METHOD_NAMES
+E   ModuleNotFoundError: No module named 'methods.configure'
+__________________ ERROR collecting tests/test_invariants.py ___________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_invariants.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_invariants.py:38: in <module>
+    from methods.advice import build_hybrid_advisor
+E   ModuleNotFoundError: No module named 'methods.advice'
+____________________ ERROR collecting tests/test_methods.py ____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_methods.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_methods.py:31: in <module>
+    from methods.configure import (
+E   ModuleNotFoundError: No module named 'methods.configure'
+______________ ERROR collecting tests/test_stable_architecture.py ______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stable_architecture.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stable_architecture.py:10: in <module>
+    from radar_ship_fs.legacy import build_legacy_selector
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+_______________ ERROR collecting tests/test_stage2_beta_sweep.py _______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_beta_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_beta_sweep.py:10: in <module>
+    import run_stage2_beta_sweep
+E   ModuleNotFoundError: No module named 'run_stage2_beta_sweep'
+______________ ERROR collecting tests/test_stage2_budget_sweep.py ______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_budget_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_budget_sweep.py:10: in <module>
+    import run_stage2_budget_sweep as budget_sweep
+E   ModuleNotFoundError: No module named 'run_stage2_budget_sweep'
+________________ ERROR collecting tests/test_stage2_dt_test.py _________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_dt_test.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_dt_test.py:10: in <module>
+    from run_stage2_dt_test import _aggregate, _development_partition, _top_k
+/root/feature-select/Radar-Ship-FS/src/run_stage2_dt_test.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_dt_test as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+_____________ ERROR collecting tests/test_stage2_guidance_sweep.py _____________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_guidance_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_guidance_sweep.py:7: in <module>
+    import run_stage2_guidance_sweep as guidance
+E   ModuleNotFoundError: No module named 'run_stage2_guidance_sweep'
+___________________ ERROR collecting tests/test_stage2_rl.py ___________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_rl.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_rl.py:11: in <module>
+    from run_stage2_rl_final_lr import _development_and_test, _load_selection
+src/run_stage2_rl_final_lr.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_rl_final_lr as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+=========================== short test summary info ============================
+ERROR tests/test_basic_baselines.py
+ERROR tests/test_engine.py
+ERROR tests/test_harness.py
+ERROR tests/test_invariants.py
+ERROR tests/test_methods.py
+ERROR tests/test_stable_architecture.py
+ERROR tests/test_stage2_beta_sweep.py
+ERROR tests/test_stage2_budget_sweep.py
+ERROR tests/test_stage2_dt_test.py
+ERROR tests/test_stage2_guidance_sweep.py
+ERROR tests/test_stage2_rl.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 11 errors during collection !!!!!!!!!!!!!!!!!!!
+110 tests collected, 11 errors in 1.96s
+ERROR conda.cli.main_run:execute(148): `conda run pytest --collect-only -q` failed. (See above for error)

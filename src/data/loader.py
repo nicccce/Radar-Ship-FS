@@ -1,22 +1,38 @@
-"""Dataset loader for radar ship data.
+"""Dataset loader (COMP-001).
 
-Loads the sim_ship_cr radar dataset.
+Loads a config-named tabular classification dataset and reports its detected feature and class
+counts, making no assumption about the number of features. Binary labels are the validation target;
+the loader derives ``n_classes`` from the data and does not assume binary, so a multiclass dataset
+would load without code changes. The dataset is selected by ``config.dataset`` (COMP-025), so
+switching datasets is a configuration change, not a code change.
+
+WDBC (``sklearn.datasets.load_breast_cancer``) is the sklearn-bundled validation target; Parkinson's
+is the file-based, subject-grouped one.
+
+Satisfies COMP-001 -> REQ-001.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
-from typing import NamedTuple, Optional
+from typing import Callable, NamedTuple, Optional
 
 import numpy as np
-from sklearn.datasets import load_svmlight_file
+import pandas as pd
+from sklearn.datasets import load_breast_cancer, load_svmlight_file
 
 from config import IrfsConfig
 
 
 class LoadedDataset(NamedTuple):
-    """Result of loading a dataset."""
+    """Result of loading a dataset.
+
+    ``groups`` is a per-row grouping vector for datasets such as Parkinson's. ``test_indices``
+    identifies rows supplied by the dataset as its test set; it is ``None`` when the dataset has
+    no predefined split.
+    """
 
     X: np.ndarray
     y: np.ndarray
@@ -28,7 +44,62 @@ class LoadedDataset(NamedTuple):
     metadata: Optional[dict] = None
 
 
+# A loader returns (X, y, feature_names, groups); ``groups`` is the per-row grouping vector
+# (e.g. subject ids) or ``None`` when the dataset defines no grouping.
+_LoaderResult = tuple[np.ndarray, np.ndarray, list[str], Optional[np.ndarray]]
+
+
+def _load_sklearn(loader: Callable[..., object]) -> _LoaderResult:
+    """Adapt an sklearn ``load_*`` Bunch into (X, y, feature_names, groups=None)."""
+    bunch = loader()
+    X = np.asarray(bunch.data)
+    y = np.asarray(bunch.target)
+    feature_names = [str(name) for name in bunch.feature_names]
+    return X, y, feature_names, None  # sklearn bunches define no grouping
+
+
+def _load_parkinsons(data_dir: str) -> _LoaderResult:
+    """Load UCI Parkinson's Disease Classification (Sakar 2018, UCI id=470) from
+    ``<data_dir>/parkinsons/pd_speech_features.csv`` — subjects are the grouping (REQ-022).
+
+    The 756 rows are voice recordings from 252 subjects with three sustained-/a/ phonations each
+    (252x3=756), so the per-row subject ``id`` is exposed as ``groups`` to keep each subject wholly
+    in one partition. Without this a subject's other two recordings leak across the split and
+    inflate measured accuracy. The CSV's first physical line is a feature-group banner ("Baseline
+    Features", ...), so the real header is row index 1 (``header=1``). ``id`` is the grouping key
+    and is dropped from X (it is not a feature); ``gender`` is kept as a feature; ``class`` (1=PD,
+    0=healthy) is the target.
+
+    ``fetch_ucirepo(id=470)`` is deliberately NOT used: this dataset is not available via the UCI
+    import API (it raises DatasetNotFoundError), so it is loaded from the statically downloaded CSV
+    under ``config.data_dir``. Raises ``FileNotFoundError`` with the expected path when the data is
+    not present locally.
+    """
+    path = os.path.join(data_dir, "parkinsons", "pd_speech_features.csv")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Parkinson's dataset not found at {path!r}. fetch_ucirepo(id=470) is unavailable "
+            f"via the UCI import API; download 'Parkinson's Disease Classification' (id=470) from "
+            f"the UCI repository, extract pd_speech_features.csv (it is a .rar nested inside the "
+            f".zip), and place it at {path!r}, or point config.data_dir at its grandparent."
+        )
+    df = pd.read_csv(path, header=1)
+    missing = {"id", "class"} - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Parkinson's CSV at {path!r} is missing expected column(s) {sorted(missing)}; "
+            f"check that it is pd_speech_features.csv read with its banner first line skipped."
+        )
+    groups = df["id"].to_numpy().astype(int)
+    y = df["class"].to_numpy().astype(int)
+    feature_cols = [c for c in df.columns if c not in ("id", "class")]
+    X = df[feature_cols].to_numpy(dtype=float)
+    feature_names = [str(c) for c in feature_cols]
+    return X, y, feature_names, groups
+
+
 def _sha256(path: Path) -> str:
+    """Return a stable content fingerprint without exposing machine-specific absolute paths."""
     digest = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
@@ -154,8 +225,16 @@ def load_radar_ship_source_test(
     return X_test_final, y_test, test_metadata
 
 
-def load_radar_ship(data_dir: str, version: str) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
-    """Load and clean the supplied radar-ship SVM-light train/test files."""
+def load_radar_ship(
+    data_dir: str,
+    version: str,
+) -> tuple[np.ndarray, np.ndarray, list[str], dict]:
+    """Load and clean the supplied radar-ship SVM-light train/test files.
+
+    Constant and exact-duplicate columns are identified on the first supplied file only, preserving
+    the version-specific candidate pool. The same column mask is applied to the test file and the
+    rows are concatenated; the loader records where the test rows begin.
+    """
     if not version or any(
         character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
         for character in version
@@ -166,12 +245,20 @@ def load_radar_ship(data_dir: str, version: str) -> tuple[np.ndarray, np.ndarray
     test_path = root / f"sim_ship_cr_{version}.test.svm"
     missing = [str(path) for path in (train_path, test_path) if not path.is_file()]
     if missing:
-        raise FileNotFoundError(f"Radar-ship SVM-light file(s) not found: {missing}.")
+        raise FileNotFoundError(
+            "Radar-ship SVM-light file(s) not found: "
+            f"{missing}. Set config.data_dir to the directory containing both files."
+        )
 
     n_original_features = 75
-    X_train_sparse, y_train = load_svmlight_file(train_path, n_features=n_original_features)
-    X_test_sparse, y_test = load_svmlight_file(test_path, n_features=n_original_features)
-
+    X_train_sparse, y_train = load_svmlight_file(
+        train_path,
+        n_features=n_original_features,
+    )
+    X_test_sparse, y_test = load_svmlight_file(
+        test_path,
+        n_features=n_original_features,
+    )
     X_train = X_train_sparse.toarray().astype(np.float32)
     X_test = X_test_sparse.toarray().astype(np.float32)
     y_train = y_train.astype(np.int64)
@@ -219,23 +306,47 @@ def load_radar_ship(data_dir: str, version: str) -> tuple[np.ndarray, np.ndarray
     return X, y, feature_names, metadata
 
 
+# Registry of config-selectable datasets. Adding a compliant dataset is a registry entry; the
+# loading logic below is dataset-agnostic (counts are derived). Each loader takes the effective
+# config (so file-based datasets can read config.data_dir) and returns a ``_LoaderResult``.
+_LOADERS: dict[str, Callable[[IrfsConfig], _LoaderResult]] = {
+    "wdbc": lambda config: _load_sklearn(load_breast_cancer),
+    "parkinsons": lambda config: _load_parkinsons(config.data_dir),
+}
+
+
 def load(config: IrfsConfig) -> LoadedDataset:
-    """Load the radar ship dataset."""
-    X, y, feature_names, metadata = load_radar_ship(
-        config.data_dir,
-        config.radar_ship_version,
-    )
-    test_start = int(metadata["source_train_rows"])
-    test_indices = np.arange(test_start, X.shape[0], dtype=int)
-    metadata = {
-        **metadata,
-        "row_split_protocol": "source_train_for_development_source_test_for_evaluation",
-        "source_file_row_boundary_used": True,
-        "candidate_feature_pool_note": (
-            "the feature mask is fitted on the source train file and applied unchanged to test"
-        ),
-    }
-    n_features = X.shape[1]
+    """Load the dataset named by ``config.dataset``.
+
+    Returns a :class:`LoadedDataset` with the feature and class counts derived from the data — no
+    assumption about the number of features — and ``groups`` set when the dataset defines a grouping
+    variable (``None`` otherwise). Raises ``ValueError`` for an unknown dataset name.
+    """
+    name = config.dataset
+    available = (*_LOADERS, "radar_ship")
+    if name not in available:
+        raise ValueError(f"Unknown dataset {name!r}; available: {sorted(available)}")
+    test_indices = None
+    metadata = None
+    if name == "radar_ship":
+        X, y, feature_names, metadata = load_radar_ship(
+            config.data_dir,
+            config.radar_ship_version,
+        )
+        groups = None
+        test_start = int(metadata["source_train_rows"])
+        test_indices = np.arange(test_start, X.shape[0], dtype=int)
+        metadata = {
+            **metadata,
+            "row_split_protocol": "source_train_for_development_source_test_for_evaluation",
+            "source_file_row_boundary_used": True,
+            "candidate_feature_pool_note": (
+                "the feature mask is fitted on the source train file and applied unchanged to test"
+            ),
+        }
+    else:
+        X, y, feature_names, groups = _LOADERS[name](config)
+    n_features = X.shape[1]  # derived from the data, not assumed
     n_classes = int(np.unique(y).size)
     return LoadedDataset(
         X=X,
@@ -243,7 +354,7 @@ def load(config: IrfsConfig) -> LoadedDataset:
         feature_names=feature_names,
         n_features=n_features,
         n_classes=n_classes,
-        groups=None,
+        groups=groups,
         test_indices=test_indices,
         metadata=metadata,
     )

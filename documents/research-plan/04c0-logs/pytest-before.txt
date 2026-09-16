@@ -1,0 +1,129 @@
+$ conda run -n dl-lab pytest -q
+exit_code=2
+
+ERROR conda.cli.main_run:execute(148): `conda run pytest -q` failed. (See above for error)
+
+==================================== ERRORS ====================================
+________________ ERROR collecting tests/test_basic_baselines.py ________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_basic_baselines.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_basic_baselines.py:10: in <module>
+    from run_basic_baselines import _kbest_mutual_information
+src/run_basic_baselines.py:22: in <module>
+    from run_stage2_rl_final_lr import _development_and_test
+src/run_stage2_rl_final_lr.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_rl_final_lr as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+____________________ ERROR collecting tests/test_engine.py _____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_engine.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_engine.py:29: in <module>
+    from methods.advice import (
+E   ModuleNotFoundError: No module named 'methods.advice'
+____________________ ERROR collecting tests/test_harness.py ____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_harness.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_harness.py:31: in <module>
+    from harness.aggregate import aggregate
+src/harness/aggregate.py:42: in <module>
+    from methods.configure import REINFORCED_METHOD_NAMES
+E   ModuleNotFoundError: No module named 'methods.configure'
+__________________ ERROR collecting tests/test_invariants.py ___________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_invariants.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_invariants.py:38: in <module>
+    from methods.advice import build_hybrid_advisor
+E   ModuleNotFoundError: No module named 'methods.advice'
+____________________ ERROR collecting tests/test_methods.py ____________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_methods.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_methods.py:31: in <module>
+    from methods.configure import (
+E   ModuleNotFoundError: No module named 'methods.configure'
+______________ ERROR collecting tests/test_stable_architecture.py ______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stable_architecture.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stable_architecture.py:10: in <module>
+    from radar_ship_fs.legacy import build_legacy_selector
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+_______________ ERROR collecting tests/test_stage2_beta_sweep.py _______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_beta_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_beta_sweep.py:10: in <module>
+    import run_stage2_beta_sweep
+E   ModuleNotFoundError: No module named 'run_stage2_beta_sweep'
+______________ ERROR collecting tests/test_stage2_budget_sweep.py ______________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_budget_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_budget_sweep.py:10: in <module>
+    import run_stage2_budget_sweep as budget_sweep
+E   ModuleNotFoundError: No module named 'run_stage2_budget_sweep'
+________________ ERROR collecting tests/test_stage2_dt_test.py _________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_dt_test.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_dt_test.py:10: in <module>
+    from run_stage2_dt_test import _aggregate, _development_partition, _top_k
+/root/feature-select/Radar-Ship-FS/src/run_stage2_dt_test.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_dt_test as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+_____________ ERROR collecting tests/test_stage2_guidance_sweep.py _____________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_guidance_sweep.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_guidance_sweep.py:7: in <module>
+    import run_stage2_guidance_sweep as guidance
+E   ModuleNotFoundError: No module named 'run_stage2_guidance_sweep'
+___________________ ERROR collecting tests/test_stage2_rl.py ___________________
+ImportError while importing test module '/tmp/radar-ship-fs-4c0-baseline-UI4Z3f/tests/test_stage2_rl.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/miniconda/envs/dl-lab/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+/root/feature-select/Radar-Ship-FS/tests/test_stage2_rl.py:11: in <module>
+    from run_stage2_rl_final_lr import _development_and_test, _load_selection
+src/run_stage2_rl_final_lr.py:7: in <module>
+    from radar_ship_fs.legacy.stage2 import run_stage2_rl_final_lr as _implementation
+E   ModuleNotFoundError: No module named 'radar_ship_fs.legacy'
+=========================== short test summary info ============================
+ERROR tests/test_basic_baselines.py
+ERROR tests/test_engine.py
+ERROR tests/test_harness.py
+ERROR tests/test_invariants.py
+ERROR tests/test_methods.py
+ERROR tests/test_stable_architecture.py
+ERROR tests/test_stage2_beta_sweep.py
+ERROR tests/test_stage2_budget_sweep.py
+ERROR tests/test_stage2_dt_test.py
+ERROR tests/test_stage2_guidance_sweep.py
+ERROR tests/test_stage2_rl.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 11 errors during collection !!!!!!!!!!!!!!!!!!!
+11 errors in 1.98s

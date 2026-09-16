@@ -102,6 +102,7 @@ class PPOSpec:
     feature_budget: int = 32
     max_swaps: int = 2
     swap_candidate_pool: int = 4
+    swap_exploration_pool: int = 0
 
 
 @dataclass(frozen=True)
@@ -224,6 +225,8 @@ class ExperimentSpec:
             raise ValueError("ppo.max_swaps must be positive")
         if self.ppo.swap_candidate_pool <= 0:
             raise ValueError("ppo.swap_candidate_pool must be positive")
+        if self.ppo.swap_exploration_pool < 0:
+            raise ValueError("ppo.swap_exploration_pool must be non-negative")
 
         enabled = [method for method in self.methods if method.enabled]
         if not enabled:
