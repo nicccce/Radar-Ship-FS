@@ -1,0 +1,35 @@
+{
+  "focused_pytest": {
+    "command": "conda run -n dl-lab pytest -q tests/test_k32_robustness.py tests/test_reward_alignment.py tests/test_feature_mapping.py",
+    "collection_errors": 0,
+    "executed": 15,
+    "failed": 0,
+    "passed": 15,
+    "skipped": 0
+  },
+  "full_pytest_after_delivery": {
+    "command": "conda run -n dl-lab pytest -q",
+    "collection_errors": 0,
+    "executed": 178,
+    "failed": 0,
+    "passed": 178,
+    "skipped": 0,
+    "warnings": 15
+  },
+  "pre_admission_collect_only": {
+    "collected": 174,
+    "collection_errors": 0,
+    "command": "conda run -n dl-lab pytest --collect-only -q"
+  },
+  "pre_admission_full_pytest": {
+    "collection_errors": 0,
+    "executed": 174,
+    "failed": 0,
+    "passed": 174,
+    "skipped": 0
+  },
+  "ruff": {
+    "command": "conda run -n dl-lab ruff check src/run_k32_robustness.py src/audit_k32_robustness.py tests/test_k32_robustness.py",
+    "status": "passed"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "code_protocol_config_hashes": {
+    "/root/feature-select/Radar-Ship-FS/src/run_k32_robustness.py": "41c4151b49308c2863a5db6cdc15cec00cfc0bdd4c5570e0f88a739749f780b4",
+    "configs/v16n/k32_reward_robustness_v1.toml": "5299b0a34006d83816c4efcdcba4cc71b75c3d1a9d4ec13a8f7cf06b1923ad52",
+    "documents/research-plan/04c-k32-robustness-protocol.md": "d8474935c60c0966dc4046e116458353c99dcf481147ffe8c698e16cb185f422",
+    "src/audit_k32_robustness.py": "e013b5b15849ee63e51f1737f0b8ef7302c6aff806b5c42f677b78d4c7aef607",
+    "src/data/loader.py": "9a17c0e3fdc91f6d7a2a219d85a383fb86f447d4b2fb77951104666ce67e9d36",
+    "src/run_reward_alignment.py": "779f6b9fbec982d1117ea56b73a843711af454d5dc04208efef0a1c7fa20ed92",
+    "tests/test_k32_robustness.py": "6187415886e05571681ebdd280713157e791dfd1d168d6f63fefd416a331e866"
+  },
+  "cpu_count": 48,
+  "created_utc": "2026-09-16T15:16:08Z",
+  "git_commit": "ed976493951228fd3cc4bd86000bda46fc98933f",
+  "git_status_before_results": "?? configs/v16n/k32_reward_robustness_v1.toml\n?? documents/research-plan/04c-k32-robustness-protocol.md\n?? src/audit_k32_robustness.py\n?? src/run_k32_robustness.py\n?? tests/test_k32_robustness.py\n",
+  "k16_closed": true,
+  "numpy": "1.26.4",
+  "outer_partition_sha256": "62235d2fde916ce00cb4fdea0224a08339c9ac26226c43f294074c6160e1fea6",
+  "platform": "Linux-6.11.0-29-generic-x86_64-with-glibc2.31",
+  "post_selection_development_check": true,
+  "python": "3.10.20 (main, Jun 11 2026, 15:17:37) [GCC 14.3.0]",
+  "rl_training_count": 0,
+  "sklearn": "1.7.2",
+  "source_test_open_count": 0,
+  "source_train_sha256": "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb",
+  "task_4b_status": "no-go",
+  "task_4b_unique_main_reward": null,
+  "version": "k32-reward-robustness-v1"
+}

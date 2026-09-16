@@ -1,0 +1,62 @@
+schema_version = 1
+protocol_version = "k32-reward-robustness-v1"
+
+[dataset]
+name = "radar_ship"
+version = "v16n_2x_noise"
+source_train = "../dataset/sim_ship_cr_v16n_2x_noise.train.svm"
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+expected_rows = 3897
+expected_original_features = 75
+expected_clean_features = 65
+source_test_open_count = 0
+
+[outer]
+kind = "StratifiedKFold"
+n_splits = 5
+shuffle = true
+random_state = 20260915
+group_metadata_status = "unavailable_03a_absent"
+
+[scorer]
+signal = "lr_balanced_accuracy"
+aggregation = "mean_minus_0_5_sample_sd"
+repeat_count = 3
+fold_count = 5
+repeat_random_states = [202609151, 202609152, 202609153]
+penalty_weight = 0.5
+C = 1.0
+solver = "liblinear"
+class_weight = "balanced"
+max_iter = 5000
+
+[search]
+k = 32
+strict_improvement_epsilon = 1e-12
+max_swap_rounds = 2
+unique_subset_ceiling = 4000
+classifier_fit_ceiling = 60000
+
+[static_baselines]
+methods = [
+  "all_features",
+  "mi_32",
+  "lr_forward",
+  "lr_forward_swap2",
+  "task2_dt_forward_k32",
+  "task2_dt_forward_single_swap_k32",
+]
+task2_dt_inner_folds = 5
+task2_dt_max_swap_rounds = 32
+dfs_status = "unavailable / protocol provenance incomplete"
+
+[decision]
+minimum_positive_outer_folds = 4
+minimum_mean_gain = 0.002
+tie_epsilon = 1e-12
+pass_label = "GO-development"
+fail_label = "NO-GO"
+
+[output]
+root = "experiments/k32_reward_robustness_v1"
+

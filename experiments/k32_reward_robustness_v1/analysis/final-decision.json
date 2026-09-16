@@ -1,0 +1,20 @@
+{
+  "cost_gate": true,
+  "frozen_development_scorer": null,
+  "mean_fold_gain": 0.0010085317042342278,
+  "mean_gain_gate": false,
+  "negative_outer_folds": 0,
+  "not_external_generalization": true,
+  "numerical_and_structural_audit_gate": true,
+  "pooled_oof_gain": 0.001009863674337308,
+  "positive_fold_gate": false,
+  "positive_outer_folds": 3,
+  "sd_fold_gain": 0.001600546252530738,
+  "status": "NO-GO",
+  "stop_static_ppo_5a_labels_and_new_k_reward_scans": true,
+  "task_4b_status_unchanged": "no-go",
+  "task_4b_unique_main_reward_unchanged": null,
+  "task_4d_admission": false,
+  "task_5a_must_wait_for_4d_report": true,
+  "zero_outer_folds": 2
+}

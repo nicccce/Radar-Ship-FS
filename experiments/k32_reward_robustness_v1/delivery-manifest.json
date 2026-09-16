@@ -1,0 +1,27 @@
+{
+  "artifact_hashes": {
+    "analysis/costs.csv": "fc6e7108aa6e68818799a4cbfe065b525d8e376740525332cb65154f9bd783df",
+    "analysis/final-decision.json": "8f57f286fc71d0d9d4e2bccd2777fdbe6f5f5136fd77c1ec3b77e620b972485b",
+    "analysis/fold_results.csv": "ab1db201ff5480b150944d923be320afd55730356fca7d12e23d10d36962790f",
+    "analysis/oof_predictions.csv": "af82b99b8a154257a9ebda656ce441d7f1956784d8d606b56affb4d3651f0879",
+    "analysis/pooled_results.csv": "f4b931a73e6cd563e7a73b6815eed311b16fb74b0a35a1a0d7737b7d5f2aeda9",
+    "audit.json": "f59de7a8df2c5417751def01f9012ce53f69a14ac83ace4a4c7a5e9f1bb6984b",
+    "configs/v16n/k32_reward_robustness_v1.toml": "5299b0a34006d83816c4efcdcba4cc71b75c3d1a9d4ec13a8f7cf06b1923ad52",
+    "documents/research-plan/04c-k32-robustness-protocol.md": "d8474935c60c0966dc4046e116458353c99dcf481147ffe8c698e16cb185f422",
+    "documents/research-plan/04c-k32-robustness.md": "a6abe8ae8dd5985f62471a42ef4be5252637cc4651bc3cef918cf55904706259",
+    "manifest.json": "1583adb60c52a125cc9778506c1e83b5bfb471f1d02fb745f1bd01aba261bbf6",
+    "outer-partition.json": "62235d2fde916ce00cb4fdea0224a08339c9ac26226c43f294074c6160e1fea6",
+    "results-complete.json": "602826aebe8a39be32e09cc7248158439f5a3850d08fabd41b16f0ba5fb5bcd8",
+    "src/audit_k32_robustness.py": "e013b5b15849ee63e51f1737f0b8ef7302c6aff806b5c42f677b78d4c7aef607",
+    "src/run_k32_robustness.py": "41c4151b49308c2863a5db6cdc15cec00cfc0bdd4c5570e0f88a739749f780b4",
+    "tests/test_k32_robustness.py": "6187415886e05571681ebdd280713157e791dfd1d168d6f63fefd416a331e866",
+    "verification.json": "65eb336dc7a5e33d0a0c8916bdf4689a580723040b58869ace3ae0e02beb903e"
+  },
+  "decision": "NO-GO",
+  "outer_partition_frozen_before_results": true,
+  "source_test_open_count": 0,
+  "status": "complete",
+  "task_4b_status_unchanged": "NO-GO",
+  "task_4d_admission": false,
+  "version": "k32-reward-robustness-v1"
+}

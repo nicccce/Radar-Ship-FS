@@ -1,0 +1,15 @@
+{
+  "cost_gate": true,
+  "mean_fold_gain": 0.0010085317042342278,
+  "mean_gain_gate": false,
+  "negative_outer_folds": 0,
+  "numerical_and_structural_audit_gate": null,
+  "pooled_oof_gain": 0.001009863674337308,
+  "positive_fold_gate": false,
+  "positive_outer_folds": 3,
+  "sd_fold_gain": 0.001600546252530738,
+  "status": "pending-independent-audit",
+  "task_4b_status_unchanged": "no-go",
+  "task_4b_unique_main_reward_unchanged": null,
+  "zero_outer_folds": 2
+}
