@@ -1,29 +1,62 @@
-# 4A/4B 后续可复制任务 Prompt
+# 4C NO-GO 后的任务 Prompt
 
-版本：`post-4ab-prompts-v2`  
-日期：2026-09-15  
+版本：`post-4c-nogo-prompts-v3`
+
+日期：2026-09-17
+
 适用仓库：`/root/feature-select/Radar-Ship-FS`
 
-## 使用说明
+## 当前状态与使用顺序
 
-任务 4A 与 4B 已完成，不要再次执行。4B 的正式状态是整体 NO-GO；下面保留的是看过结果后新提出的 K=32 分支，不能改写成原 4B 已通过。
+4C-0 已完成 PASS；4C 已完成 NO-GO（+0.1009 pp，3/2/0 正/平/负）。**当前只执行下面的任务 3A。4D、5A、5B 及该 K=32 分支的任务 6 均不准入。** 原设计保留在本文件后部用于追溯，不能复制执行已关闭任务。任务 7 仍需可靠的场景和环境元数据。
 
-建议顺序：
+先阅读 `documents/research-plan/next-stage-roadmap.md` 与 `documents/research-plan/04c-review-and-next-steps.md`。这次 NO-GO 不是软件失败，也不是 PPO 已经输给基线的实验结论；4C 没有训练 RL。
 
-1. 任务 4C-0 与任务 3A 可并行；
-2. 4C-0 完成后执行任务 4C；
-3. 任务 4C 通过后执行任务 4D；
-4. 任务 4D 完成后，无论其 GO/NO-GO 都可执行 5A；只有 4D 和 5A 都通过才执行 5B；
-5. 方法冻结且有新增独立数据后执行任务 6；
-6. 任务 7 只在 3A 恢复真实环境元数据后考虑。
+## Prompt：任务 3A（当前下一步）
 
-每个 prompt 都假设 agent 是全新会话。路线、已知结果、门槛和共同约束统一记录在：
+```text
+你正在一个全新会话中工作，不具备此前对话上下文。
 
-`/root/feature-select/Radar-Ship-FS/documents/research-plan/next-stage-roadmap.md`
+请在 /root/feature-select 中执行 Radar-Ship-FS 的“任务 3A：v16n_2x_noise 数据谱系与场景分组审计”。先检查适用 AGENTS.md 和 git status，保留已有修改。
+
+开始前完整阅读：
+
+1. Radar-Ship-FS/documents/research-plan/next-stage-roadmap.md
+2. Radar-Ship-FS/documents/research-plan/04c-review-and-next-steps.md
+3. Radar-Ship-FS/documents/research-plan/04c-k32-robustness.md
+4. Radar-Ship-FS/experiments/k32_reward_robustness_v1/analysis/final-decision.json
+5. Radar-Ship-FS/documents/research-plan/protocol.md
+6. Radar-Ship-FS/documents/v16n-data-analysis-report.md
+7. 当前生成代码、既有 manifest、日志、git history 和 source-train 元数据。
+
+已知边界：
+
+- 4C-0 已 PASS，4C 因 +0.1009 pp、3/2/0 未达到效应门槛而 NO-GO，4D/5A/5B/原任务6不准入。
+- 不训练 PPO/DQN，不新增特征选择实验，不扫描 K/reward，不更改 4B/4C 的协议、结果或 hash。
+- 截至 2026-09-17，03a-data-lineage-audit.md 尚不存在；若执行时已存在，先核验已有交付，避免覆盖或重复。
+- 历史 source-test 内容不得打开；审计其生成关系时只读生成代码和既有 manifest/日志，不用其特征或标签进行诊断。
+
+追查 v16n_2x_noise 的实际生成入口、上游输入、噪声增强、shuffle、split 与父子关系。尝试恢复可核验的 original-row ID、base_scene_id、augmentation_parent_id、海况、擦地角与 SCR，并记录每一列的证据来源。不要把旧 v16n 的增强倍数直接套用，不按行序、相似度或聚类伪造 group，也不要预设已经发生泄漏。
+
+输出字段字典、生成关系和 source-train 行到真实 group/env 的映射（只有可验证时才生成）。对无法恢复的字段逐项标记 unavailable 并列最小补充材料。说明环境变量在实际选择特征时是否已知；没有证据就标为未确认。
+
+只有恢复可靠 group 后，才可另建诊断协议和结果目录，在看性能前冻结一次小型 row/group split 敏感性检查：唯一方法为 All Features + fold-local StandardScaler/LR Balanced Accuracy，参数沿用 4C；尽量匹配训练规模，内外层同源副本不跨 fold。不做 forward/swap，不使用 source-test，不用更换 split 挽救 4C；结果只是数据敏感性诊断。无法恢复 group 则不拟造分组实验。
+
+输出：
+
+- Radar-Ship-FS/documents/research-plan/03a-data-lineage-audit.md；
+- 可验证映射、字段来源、缺失链路与最小补充材料；
+- 真实 group-aware 验证是否可行，任务 7 数据前提是否具备；
+- 即使谱系恢复成功，也明确旧 4C 仍 NO-GO，旧静态 RL 分支不自动重启。
+```
 
 ---
 
-## Prompt：任务 4C-0（应最先执行）
+## 历史设计与未准入任务
+
+以下 prompt 正文保留旧版本设计。其条件没有被满足；当前状态以上面的路线与 4C 决策为准。它们不会因为“换一个任务编号”或“获得新的 random seed”而重新准入。
+
+## 归档 Prompt：任务 4C-0（已完成 PASS，不重跑）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -76,7 +109,7 @@
 
 ---
 
-## Prompt：任务 4C（K=32 锁定复核）
+## 归档 Prompt：任务 4C（已完成 NO-GO，不重跑）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -159,7 +192,7 @@ outer 划分必须在查看结果前物化、保存并 hash：
 
 ---
 
-## Prompt：任务 4D（PPO 参数更新贡献）
+## 已关闭 Prompt：任务 4D（4C NO-GO，不准入）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -259,7 +292,7 @@ GO 门槛全部满足才算策略更新有效：
 
 ---
 
-## Prompt：任务 5A（监督动作排序）
+## 已关闭 Prompt：任务 5A（4C NO-GO，不准入）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -332,7 +365,7 @@ GO 门槛全部满足才算策略更新有效：
 
 ---
 
-## Prompt：任务 5B（监督初始化 + PPO）
+## 已关闭 Prompt：任务 5B（前置条件失败，不准入）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -390,7 +423,7 @@ GO 门槛全部满足才算策略更新有效：
 
 ---
 
-## Prompt：任务 6（最终锁定评价）
+## 已关闭 Prompt：任务 6（当前 K=32 分支 blocked）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -456,7 +489,7 @@ final 表可保留多个冻结基线，但不得按 final 结果更换主方法�
 
 ---
 
-## Prompt：任务 7（环境条件化分支，条件任务）
+## 条件 Prompt：任务 7（等待 3A，当前不准入）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -512,31 +545,3 @@ final 表可保留多个冻结基线，但不得按 final 结果更换主方法�
 ```
 
 ---
-
-## Prompt：任务 3A（尚未完成，可与 4C-0 并行）
-
-```text
-你正在一个全新会话中工作，不具备此前对话上下文。
-
-请在 /root/feature-select 中执行 Radar-Ship-FS 的“任务 3A：v16n_2x_noise 数据谱系与场景分组审计”。
-
-开始前必须完整阅读：
-
-1. Radar-Ship-FS/documents/research-plan/next-stage-roadmap.md
-2. Radar-Ship-FS/documents/research-plan/protocol.md
-3. Radar-Ship-FS/documents/research-plan/03-search-diagnosis.md
-4. Radar-Ship-FS/documents/v16n-data-analysis-report.md
-5. 当前 dataset、数据生成代码、历史日志、manifest 和 git history
-
-当前仓库中没有 Radar-Ship-FS/documents/research-plan/03a-data-lineage-audit.md；不要假设此任务已经完成。
-
-追查 v16n_2x_noise train/test 的真实生成入口、上游输入、变换、噪声增强、shuffle、split、base scene、父子副本和环境参数。不要把旧 v16n 的增强倍数直接套用；不要按行序、相似度或聚类伪造 group ID；不要预设已经泄漏。
-
-只有恢复可靠 parent/scene/env 元数据后，才做一个在结果前冻结的小型 row-level 与 group-aware split 敏感性比较。无法恢复时，列出缺失链路和最小补充材料，并把后续结论限制为行级 source-train development evidence。
-
-输出 Radar-Ship-FS/documents/research-plan/03a-data-lineage-audit.md，并分别给出：
-
-- 4C 是否可使用真实 group-aware outer split；
-- 任务 7 是否具备环境条件化研究条件；
-- 需要补充的原始 manifest、生成参数或 scene IDs。
-```

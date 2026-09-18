@@ -1,7 +1,9 @@
 # Radar-Ship-FS 下一阶段科研路线与任务上下文
 
-版本：`next-stage-roadmap-v2-post-4ab`  
-日期：2026-09-15  
+版本：`next-stage-roadmap-v3-post-4c-nogo`
+
+日期：2026-09-17
+
 适用仓库：`/root/feature-select/Radar-Ship-FS`
 
 ## 1. 本文件的用途
@@ -20,7 +22,7 @@
 
 原路线要求前两个问题都得到正面解决后才扩大策略学习，并要求策略更新显示独立增量后才开展监督预训练加 RL。任务 4A/4B 没有同时满足这一条件，原跨 K 路线已经停止。
 
-任务 4A/4B 的结果是：动作支持获得工程修复，但固定预算效率没有改善；奖励在 K=32 显示正信号、在 K=16 失败。当前唯一保留的静态 RL 机会，是先对事后限定的 K=32 假设做锁定复核，再单独检验参数更新。
+任务 4C 已完成，K=32 锁定复核仍为 NO-GO：收益为 +0.1009 pp，3/2/0 正/平/负，两项效应门槛均未达到。当前静态 RL 分支停止，4D、5A、5B 和该分支的任务 6 均不准入。4C 没有训练 RL，不能把该停止决定解释为已证明 PPO 无效。当前下一步是任务 3A 数据谱系审计；另见 `04c-review-and-next-steps.md`。
 
 ## 3. 已完成工作及可信边界
 
@@ -122,7 +124,7 @@
 - K=32 对应平均变化为 `+0.4149 pp`，正/平/负为 `5/0/0`，单独通过银行、搜索收益和成本门槛。
 - 预注册要求 K=16 与 K=32 同时通过，因此整体决定仍是 NO-GO，`unique_main_reward=null`，原任务 4C 的准入为 false。
 
-K=32 的结果值得形成一个**看过 4B 结果后提出的新假设**。它只能在新的版本化协议中做锁定的 development robustness check；不能把 4B 的整体 NO-GO 改写为 PASS，也不能把同一 source-train 上的新随机划分称为独立外部确认。
+K=32 的结果曾形成一个看过 4B 结果后提出的新假设，随后在任务 4C 做了锁定的 development robustness check。4C 已完成且为 NO-GO；4B 的整体结论没有改变。
 
 主要材料：
 
@@ -130,11 +132,22 @@ K=32 的结果值得形成一个**看过 4B 结果后提出的新假设**。它�
 - `documents/research-plan/04b-reward-alignment.md`
 - `experiments/reward_alignment_v1/`
 
-### 3.6 当前仓库验证边界
+### 3.6 仓库验证：4C-0 已修复
 
-4A/4B 的定向测试、数值复算和 audit 通过，但仓库全量 pytest 当前有 11 个 collection errors。根因是旧兼容模块和 stage2 入口被移动或删除后，active wrapper、harness 与测试仍保留悬空 import，涉及 `methods.configure`、`methods.advice`、`radar_ship_fs.legacy` 和顶层 stage2 scripts。
+任务 4C-0 已完成并 PASS。原有 11 个 collection errors 由兼容层、stage2 wrappers 及数据 loader/splitter 契约修复解决，修复后 174/174 测试通过。4C 交付的 `verification.json` 记录全量 178 executed / 178 passed / 0 failed / 0 skipped / 0 collection errors。
 
-这不推翻 4A/4B 已完成的定向证据，但会使后续 PPO 改动无法获得完整回归保护。正式 4C/4D 实验前必须先完成任务 4C-0，使全量 suite 能够完整收集并执行；不得用批量 skip、删除仍代表现行契约的测试或降低断言来掩盖错误。
+以上是已保存的验证记录，本次路线更新没有重新运行 pytest。不能继续将“仓库现有 11 个 collection errors”写成当前状态。详见 `04c0-repository-test-repair.md` 和 `experiments/k32_reward_robustness_v1/verification.json`。
+
+### 3.7 任务 4C：K=32 锁定复核 NO-GO
+
+- forward 到最多两轮完整 swap：平均 +0.1009 pp，pooled OOF +0.1010 pp，3 正、2 平、0 负。
+- 没有达到平均 +0.2 pp、至少 4/5 为正的预先冻结门槛；成本、隔离、坐标、逐步 argmax 和数值复算全部通过。
+- fold 3/4 在完整第一轮邻域检查后无严格 J 改善；fold 0/1/2 都接受两次交换后达到预算上限。不能从此推出全空间没有更优子集，也不能指责策略没有找到动作——本实验没有策略训练。
+- All Features 为 91.8579%，LR-forward 为 91.5743%，LR-forward+swap 为 91.6751%（均为五折平均 LR BAcc）。32 维相对 65 维减少 50.77% 的特征数量，平均性能低 0.1828 pp，最差配对 fold 差为 -1.8350 pp。这只是开发描述，不是性能等价、非劣或计算成本降低的证据。
+- `frozen_development_scorer=null`，`task_4d_admission=false`；4B 仍为整体 NO-GO。
+- 本轮重新从保存 CSV 计算平均增益和正/平/负，与 `final-decision.json` 一致；没有重跑搜索、模型拟合或读取 source-test。
+
+输入证据：`04c-k32-robustness.md`、`04c-k32-robustness-protocol.md`、`experiments/k32_reward_robustness_v1/analysis/{fold_results.csv,pooled_results.csv,final-decision.json}`、`audit.json`。
 
 ## 4. 全局实验约束
 
@@ -154,58 +167,42 @@ K=32 的结果值得形成一个**看过 4B 结果后提出的新假设**。它�
 12. 只运行与任务结论必要的实验，不扩大无边界超参数扫描。
 13. 任务 4C、4D、5A、5B 若复用同一 outer folds，它们共同构成累计模型选择链；后续任务不得把这些 folds 重新称为新验证或独立确认。
 
-## 5. 4A/4B 后的任务顺序与准入门槛
+## 5. 4C NO-GO 后的当前执行状态
 
-原路线规定“4B 的 K=16 与 K=32 全部通过才进入策略学习”。该门槛已经触发 NO-GO，所以原任务 4C 不再执行。下面是结果后新增的、明确限定 K=32 的研究分支；它不修改历史协议。
+| 任务 | 当前状态 | 后续动作 |
+|:---|:---|:---|
+| 4C-0 | 已完成 PASS | 保留验证记录，不重复修复 |
+| 4A / 4B / 4C | 已完成；4B、4C 均 NO-GO | 保留协议与结果，不改门槛、不换 splits 继续复试 |
+| 4D | 未准入 | 不训练 PPO，不伪造算法 NO-GO 报告 |
+| 5A / 5B | 未准入 | 不生成监督标签或训练预训练策略 |
+| 原任务 6 | 本 K=32 分支 blocked | 不能把缺失的 4D/5A 报告当作 NO-GO 来选静态 winner |
+| 3A | 尚未完成；当前下一步 | 审计真实 scene/group/env 谱系 |
+| 7 | 尚未准入 | 等 3A 确认数据、环境可用性后再评估 |
 
-```text
-任务 4C-0：仓库兼容与全量测试修复 ───────────────┐
-任务 3A：真实 scene/group/env 谱系审计 ─────────────┤
-4A：支持修复 PASS、效率 NO-GO ─────────────────────┼─> 任务 4C：K=32 锁定稳健性复核
-4B：整体 NO-GO、K=32 子轨道 5/5 正 ────────────────┘                │
-                                                                      ├─ FAIL：停止当前静态 RL
-                                                                      └─ GO-development
-                                                                             │
-                                                        任务 4D：PPO 参数更新贡献
-                                                                             │ 完成，无论 GO/NO-GO
-                                                        任务 5A：监督动作排序
-                                                                             │
-                                                   ┌─────────────────────────┴─────────────────────┐
-                                                   │ 4D 与 5A 都 GO                               │ 其他情况
-                                     任务 5B：监督初始化 + PPO 微调                  保留通过门槛的简单/监督方法
-                                                   └─────────────────────────┬─────────────────────┘
-                                                                             │
-                                                        任务 6：唯一主方法冻结与新增数据评价
+现在只推进 3A 与已有证据整理。3A 发现可靠 group 也不会自动重开旧 4C；任何新问题都需要新的协议、明确的目标和验证边界。
 
-任务 3A PASS 且先证明环境异质性收益 ─────────────> 任务 7：环境条件化分支
-```
+若研究目标改为“在可接受性能损失下减少特征计算成本”，应先证明各特征确有可减少的计算成本，并在新的评价数据开放前确定可接受损失。当前 32 维结果只提供提出该假设的理由，不能把失败的精度增益实验改名为压缩成功。
 
-准入规则：
+若希望继续研究 RL，应先建立实际需要逐步决策的问题，例如按已观测特征决定下一项并学习停止，或可靠环境条件下的预算分配。任务 7 首先检查这种需求与简单基线；当前结果没有授权增加 PPO 网络、训练轮数或继续扫描 K/reward。
 
-- 4C-0 与 3A 可以并行。4C-0 是正式新实验的工程硬门槛。
-- 3A 若恢复真实 group，4C 优先使用 group-aware outer folds；若 3A 未完成或 NO-GO，4C 可以做行级 source-train 稳健性复核，但最高只能给出 `GO-development`。
-- 4C 只复核 K=32。它通过后先运行 4D；失败则停止当前静态 PPO、监督标签扩展和新的 K/reward 扫描。
-- 4D 单独回答 PPO 参数更新是否有用。4D 完成后，无论 GO/NO-GO 都可运行 5A；5A 单独回答监督动作排序是否可迁移。
-- 5B 必须同时取得 4D 与 5A 的 GO。若预训练后 PPO 没有超过冻结监督策略，贡献归于监督排序。
-- 任务 6 需要方法先完全冻结。现有 source-test 不能充当新的独立确认集。
-- 任务 7 需要 3A 的真实 scene/group/env 元数据，并先证明条件化子集相对全局子集存在稳定收益。
+## 6. 任务定义：当前 3A、条件任务 7 与历史设计
 
-## 6. 待执行任务定义
+**本节保留旧设计用于追溯。4C-0/4C 已完成；4D/5A/5B/6 因 4C NO-GO 而关闭，不能把旧的条件说明当作当前执行许可。**
 
 ### 任务 3A：v16n_2x_noise 数据谱系与场景分组审计
 
-该任务尚未完成。它不阻塞行级 4C development check，但阻塞 group-aware 结论和环境条件化研究。
+该任务尚未完成，是当前下一步。它决定是否能支持真实场景分组与环境研究，不承担重新挑选划分使旧 4C 过关的任务。
 
 要求：
 
 - 追查 train/test 文件的生成入口、上游输入、增强、shuffle、split、父场景与环境参数。
 - 不得把旧 v16n 的 `696×4` 结论直接用于 v16n_2x_noise。
 - 不得按行序、相似度或聚类伪造真实 group。
-- 能恢复可靠 group 时，只做一项预先冻结的小型 row split 与 group split 敏感性比较。
+- 能恢复可靠 group 时，使用新的诊断协议和目录，最多做一项固定 All Features + LR 的 row/group split 敏感性比较，不重新运行特征搜索或解禁 4D/5A。不得读取历史 source-test；其谱系仅查生成代码与既有 manifest。
 - 无法恢复时，列出最小补充材料并维持行级开发结论边界。
 - 输出 `documents/research-plan/03a-data-lineage-audit.md`。
 
-### 任务 4C-0：仓库兼容边界与全量测试修复
+### 已完成设计：任务 4C-0 仓库兼容边界与全量测试修复
 
 这是工程可信度门槛，不做科研调参、不运行正式 PPO、不改写 4A/4B 的报告、manifest 或结果 hash。
 
@@ -219,7 +216,7 @@ K=32 的结果值得形成一个**看过 4B 结果后提出的新假设**。它�
 - 4A、4B、PPO、harness 和 invariants 相关测试必须实际执行；修改文件通过 Ruff。
 - 输出 `documents/research-plan/04c0-repository-test-repair.md`，逐项记录根因、兼容决策、收集数、执行数、通过/失败数和剩余限制。
 
-### 任务 4C：K=32 锁定稳健性复核与静态基线定位
+### 已完成设计：任务 4C K=32 锁定稳健性复核（NO-GO）
 
 这是根据 4B 的 K=32 结果新提出的 post-selection development robustness check。原 4B 仍是整体 NO-GO。
 
@@ -243,7 +240,7 @@ K=32 的结果值得形成一个**看过 4B 结果后提出的新假设**。它�
 
 通过只冻结一个“K=32 机制实验用 development scorer”，不改变 4B 的 `unique_main_reward=null`，也不构成外部泛化证据。输出 `documents/research-plan/04c-k32-robustness.md`。
 
-### 任务 4D：全合法动作空间下的 K=32 策略更新贡献消融
+### 已关闭设计：任务 4D 全合法动作空间下的 K=32 策略更新贡献消融
 
 准入检查：4C-0 必须通过，4C 必须为 `GO-development`。否则只输出 blocked/no-go，不训练 PPO。
 
@@ -280,7 +277,7 @@ GO 必须同时满足：
 
 任一项失败都不得声称策略更新有效，并停止 5B；可继续 5A 作为非 RL 路线。输出 `documents/research-plan/04d-k32-policy-learning-ablation.md`。
 
-### 任务 5A：K=32 监督动作排序的可迁移性
+### 已关闭设计：任务 5A K=32 监督动作排序的可迁移性
 
 准入检查：4C 必须通过，4D 必须已经执行完成并产出 GO 或 NO-GO 报告。4D 失败时，本任务明确属于非 RL 替代路线。
 
@@ -296,7 +293,7 @@ GO 必须同时满足：
 
 输出 `documents/research-plan/05a-supervised-action-ranking.md`。若 4D 失败而 5A 成功，成果归为监督搜索，不包装成 RL。
 
-### 任务 5B：监督初始化后的 PPO 微调增量
+### 已关闭设计：任务 5B 监督初始化后的 PPO 微调增量
 
 准入检查：4D 与 5A 必须同时明确 GO；否则只输出 no-go，不训练复杂模型。
 
@@ -312,7 +309,7 @@ GO 必须同时满足：
 
 输出 `documents/research-plan/05b-pretrained-ppo.md`。
 
-### 任务 6：最终方法冻结、强基线比较与新增数据评价
+### 已关闭设计：任务 6 当前 K=32 分支的最终锁定评价
 
 准入检查：4C 必须明确 `GO-development`，且 4D、5A 都必须存在明确的 GO/NO-GO 报告；缺失报告不能按 NO-GO 处理。4C 失败时，本 K=32 分支的任务 6 为 blocked。
 
