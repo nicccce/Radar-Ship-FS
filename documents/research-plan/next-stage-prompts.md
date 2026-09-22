@@ -1,18 +1,24 @@
-# 4C NO-GO 后的任务 Prompt
+# 4C NO-GO 与 3A/7 数据阻断后的任务 Prompt 归档
 
-版本：`post-4c-nogo-prompts-v3`
+版本：`post-3a-7-blocked-prompts-v4`
 
-日期：2026-09-17
+日期：2026-09-21
 
 适用仓库：`/root/feature-select/Radar-Ship-FS`
 
 ## 当前状态与使用顺序
 
-4C-0 已完成 PASS；4C 已完成 NO-GO（+0.1009 pp，3/2/0 正/平/负）。**当前只执行下面的任务 3A。4D、5A、5B 及该 K=32 分支的任务 6 均不准入。** 原设计保留在本文件后部用于追溯，不能复制执行已关闭任务。任务 7 仍需可靠的场景和环境元数据。
+**新增探索规划入口（2026-09-21）：** 完整读取并执行 `documents/research-plan/08-next-exploration-planning-prompt.md`。该任务比较有新机制或新目标的候选方向，交付一个首个小实验的计划及执行 prompt；下方旧任务的停止状态保持不变。环境数据阻断不应扩大为禁止所有探索。
 
-先阅读 `documents/research-plan/next-stage-roadmap.md` 与 `documents/research-plan/04c-review-and-next-steps.md`。这次 NO-GO 不是软件失败，也不是 PPO 已经输给基线的实验结论；4C 没有训练 RL。
+4C-0 已完成 PASS；4C 已完成 NO-GO（+0.1009 pp，3/2/0 正/平/负）。3A 已完成审计但未恢复真实场景/增强/环境谱系；任务 7 已完成前提检查，结论为 **BLOCKED / NO-GO（数据前提失败）**，未进入性能评价。4D、5A、5B 及该 K=32 分支的任务 6 均未准入。
 
-## Prompt：任务 3A（当前下一步）
+**当前没有待执行的训练 prompt，也不需要重复执行 3A 或任务 7 的准入审计。** 下文全部为历史任务文本；其中的时间、未来式和执行指令只描述当时设计，不代表当前授权。没有新的原始场景、生成记录或可验证映射时，继续审计不会产生新的算法证据。
+
+判断当前状态时，先阅读 `documents/research-plan/next-stage-roadmap.md`、`documents/research-plan/03a-data-lineage-audit.md` 与 `documents/research-plan/07-environment-conditioned-feasibility.md`。4C 的历史解读见 `documents/research-plan/04c-review-and-next-steps.md`。4C 是收益未达到门槛，任务 7 是数据前提失败；两者都没有训练 PPO，不能写成 PPO 的性能失败。
+
+恢复任务 7 需要实际的数据材料：原始场景/生成链、最终行到场景与增强父样本的映射、环境字段及其选择前可用性。若旧谱系无法恢复，可从原始场景发布保留这些信息的新版本。其他探索按上方新增规划入口评估，不把恢复这些材料当成所有算法机制研究的共同前提；旧 4C 不自动重启，旧门槛不事后降低。
+
+## 归档 Prompt：任务 3A（已完成，谱系未恢复）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
@@ -489,7 +495,7 @@ final 表可保留多个冻结基线，但不得按 final 结果更换主方法�
 
 ---
 
-## 条件 Prompt：任务 7（等待 3A，当前不准入）
+## 归档 Prompt：任务 7（前提检查已完成，数据阻断）
 
 ```text
 你正在一个全新会话中工作，不具备此前对话上下文。
