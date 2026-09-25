@@ -241,9 +241,12 @@ class SVCScorer:
         final_ids: tuple[int, ...],
         subset: tuple[int, ...],
         folds: Sequence[dict[str, Sequence[int]]],
+        C: float = 1.0,
+        gamma: float = 1.0 / 65.0,
     ) -> dict[str, Any]:
         columns = np.asarray(final_ids, dtype=int)[np.asarray(subset, dtype=int)] - 1
         fold_scores = []
+        fold_accuracies = []
         started = time.perf_counter()
         for split in folds:
             fit = np.asarray(split["fit"], dtype=int)
@@ -251,8 +254,8 @@ class SVCScorer:
             scaler = StandardScaler().fit(raw[fit][:, columns])
             classifier = SVC(
                 kernel="rbf",
-                C=1.0,
-                gamma=1.0 / 65.0,
+                C=C,
+                gamma=gamma,
                 class_weight="balanced",
                 probability=False,
                 tol=1e-3,
@@ -263,9 +266,12 @@ class SVCScorer:
             classifier.fit(scaler.transform(raw[fit][:, columns]), labels[fit])
             prediction = classifier.predict(scaler.transform(raw[held][:, columns]))
             fold_scores.append(float(balanced_accuracy_score(labels[held], prediction)))
+            fold_accuracies.append(float(accuracy_score(labels[held], prediction)))
         return {
             "objective": float(np.mean(fold_scores)),
             "fold_scores": fold_scores,
+            "accuracy": float(np.mean(fold_accuracies)),
+            "fold_accuracies": fold_accuracies,
             "classifier_fit_count": len(folds),
             "fit_seconds": time.perf_counter() - started,
             "scaler_fit_scope": "each_inner_training_fold",
@@ -365,6 +371,8 @@ def endpoint_metrics(
     subset: Sequence[int],
     *,
     classifier: str = "svc",
+    C: float = 1.0,
+    gamma: float = 1.0 / 65.0,
 ) -> dict[str, float]:
     clean = np.asarray(tuple(subset), dtype=int)
     columns = np.asarray(fold_data.final_ids, dtype=int)[clean] - 1
@@ -374,8 +382,8 @@ def endpoint_metrics(
     if classifier == "svc":
         model = SVC(
             kernel="rbf",
-            C=1.0,
-            gamma=1.0 / 65.0,
+            C=C,
+            gamma=gamma,
             class_weight="balanced",
             probability=False,
             tol=1e-3,

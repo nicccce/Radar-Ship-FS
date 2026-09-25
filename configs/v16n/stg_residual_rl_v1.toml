@@ -1,0 +1,52 @@
+schema_version = 1
+protocol_version = "stg-residual-rl-v1"
+
+[dataset]
+source_train = "../dataset/sim_ship_cr_v16n_2x_noise.train.svm"
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+outer_partition = "experiments/k32_reward_robustness_v1/outer-partition.json"
+outer_partition_sha256 = "62235d2fde916ce00cb4fdea0224a08339c9ac26226c43f294074c6160e1fea6"
+source_test_open_count = 0
+expected_rows = 3897
+expected_original_features = 75
+expected_clean_features = 65
+
+[experiment]
+outer_folds = [0, 1]
+seeds = [2026092501, 2026092502]
+graph_threshold = 0.5
+graph_seed_base = 20260915
+inner_seed_base = 2026092201
+
+[stg]
+epochs = 45
+batch_size = 256
+hidden_dim = 64
+learning_rate = 0.001
+sigma = 0.5
+lambda = 0.02
+
+[search]
+min_k = 16
+max_k = 48
+unique_per_start = 24
+training_unique_per_start = 12
+batch_size = 4
+max_attempts_per_batch = 1000
+
+[policy]
+hidden_dim = 96
+learning_rate = 0.0005
+entropy_coef = 0.001
+torch_threads = 1
+
+[scorer]
+folds = 3
+kernel = "rbf"
+C = 1.0
+gamma = 0.015384615384615385
+class_weight = "balanced"
+
+[output]
+root = "experiments/stg_residual_rl_v1"
+report = "documents/research-plan/09b-stg-residual-rl-v1-results.md"

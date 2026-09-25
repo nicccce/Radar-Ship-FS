@@ -1,0 +1,53 @@
+schema_version = 1
+protocol_version = "09c-1-locked-accuracy-v1"
+
+[dataset]
+source_train = "../dataset/sim_ship_cr_v16n_2x_noise.train.svm"
+source_train_sha256 = "2191fdc297aa49ce6a700df956ec44f68dc13e4c737937b31167543a203d22bb"
+outer_partition = "experiments/k32_reward_robustness_v1/outer-partition.json"
+outer_partition_sha256 = "62235d2fde916ce00cb4fdea0224a08339c9ac26226c43f294074c6160e1fea6"
+source_test_open_count = 0
+expected_rows = 3897
+expected_original_features = 75
+expected_clean_features = 65
+
+[experiment]
+outer_folds = [2, 3, 4]
+seeds = [2026092501, 2026092502]
+graph_threshold = 0.5
+graph_seed_base = 20260915
+inner_seed_base = 2026092201
+
+[stg]
+epochs = 45
+batch_size = 256
+hidden_dim = 64
+learning_rate = 0.001
+sigma = 0.5
+lambda = 0.02
+
+[policy]
+torch_threads = 1
+
+[scorer]
+folds = 3
+kernel = "rbf"
+class_weight = "balanced"
+old_C = 1.0
+old_gamma = 0.015384615384615385
+new_C = 10.0
+new_gamma = 0.03125
+C_grid = [0.3, 1.0, 3.0, 10.0]
+gamma_factors = [0.5, 1.0, 2.0]
+include_gamma_1_over_65 = true
+selection_tie_break = "descending inner BAcc, descending inner Accuracy, ascending original feature IDs, C, gamma"
+
+[decision]
+min_mean_gain_pp = 0.2
+min_positive_folds = 2
+primary = ["stg32_old", "mi32_new"]
+comparator = "all65_grid"
+
+[output]
+root = "experiments/locked_accuracy_validation_v1"
+report = "documents/research-plan/09c-locked-accuracy-validation-v1-results.md"
